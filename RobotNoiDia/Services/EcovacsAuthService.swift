@@ -250,7 +250,16 @@ public final class EcovacsAuthService {
                     if let result = json["result"] as? String, result == "ok",
                        let token = json["token"] as? String {
                         let finalUid = (json["userId"] as? String) ?? userId
-                        let lastDurationMs = Double(json["last"] as? String ?? "604800000") ?? 604800000.0 // 7 days default
+                        let lastDurationMs: Double
+                        if let intVal = json["last"] as? Int {
+                            lastDurationMs = Double(intVal)
+                        } else if let numVal = json["last"] as? NSNumber {
+                            lastDurationMs = numVal.doubleValue
+                        } else if let strVal = json["last"] as? String, let d = Double(strVal) {
+                            lastDurationMs = d
+                        } else {
+                            lastDurationMs = 604800000.0 // 7 days default
+                        }
                         let validitySeconds = (lastDurationMs / 1000.0) * 0.95
                         let expiresAt = Int(Date().timeIntervalSince1970 + validitySeconds)
                         return (finalUid, token, expiresAt)

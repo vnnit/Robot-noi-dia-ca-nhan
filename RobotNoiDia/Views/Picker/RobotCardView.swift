@@ -34,7 +34,7 @@ public struct RobotCardView: View {
                 // Hàng 1: Icon Robot thật, Tên, Model & Nút đổi tên
                 HStack(spacing: 14) {
                     // Biểu tượng Robot Hút Bụi Laser LiDAR chuyên nghiệp
-                    RobotAvatarView(isCleaning: isCleaning, size: 52)
+                    RobotAvatarView(isCleaning: isCleaning, isDarkModel: device.isDarkModel, size: 52)
                     
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {

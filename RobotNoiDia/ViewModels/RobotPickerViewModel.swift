@@ -33,21 +33,21 @@ public final class RobotPickerViewModel: ObservableObject {
                 self.isLoading = false
                 self.isRefreshing = false
                 
-                // Nạp trạng thái pin & dọn dẹp chạy ngầm không chặn giao diện
-                await withTaskGroup(of: (Int, DeviceState).self) { group in
+                // Nạp nhanh pin & dọn dẹp chạy ngầm không chặn giao diện
+                await withTaskGroup(of: (Int, Int?, Bool?, String?, String?).self) { group in
                     for (index, dev) in fetched.enumerated() {
                         group.addTask {
-                            let state = await self.deviceService.getDeviceState(device: dev)
-                            return (index, state)
+                            let qs = await self.deviceService.getQuickStatus(device: dev)
+                            return (index, qs.battery, qs.isCharging, qs.cleanState, qs.cleanStateText)
                         }
                     }
                     
-                    for await (index, state) in group {
+                    for await (index, batt, ch, st, text) in group {
                         if index < self.devices.count {
-                            self.devices[index].battery = state.batteryPercent
-                            self.devices[index].isCharging = state.isCharging
-                            self.devices[index].cleanState = state.cleanState
-                            self.devices[index].cleanStateText = state.cleanStateText
+                            if let b = batt { self.devices[index].battery = b }
+                            if let c = ch { self.devices[index].isCharging = c }
+                            if let s = st { self.devices[index].cleanState = s }
+                            if let t = text { self.devices[index].cleanStateText = t }
                         }
                     }
                 }
@@ -55,7 +55,7 @@ public final class RobotPickerViewModel: ObservableObject {
                 // Lưu lại cache gồm cả trạng thái pin
                 self.deviceService.saveCachedDevices(self.devices)
                 
-                // Bắt đầu chu kỳ làm mới thẻ định kỳ 8 giây
+                // Bắt đầu chu kỳ làm mới thẻ định kỳ 6 giây
                 startAutoPolling()
             } catch {
                 self.isLoading = false
@@ -84,12 +84,12 @@ public final class RobotPickerViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 for (index, dev) in self.devices.enumerated() {
-                    let st = await self.deviceService.getDeviceState(device: dev)
+                    let qs = await self.deviceService.getQuickStatus(device: dev)
                     if index < self.devices.count {
-                        self.devices[index].battery = st.batteryPercent
-                        self.devices[index].isCharging = st.isCharging
-                        self.devices[index].cleanState = st.cleanState
-                        self.devices[index].cleanStateText = st.cleanStateText
+                        if let b = qs.battery { self.devices[index].battery = b }
+                        if let c = qs.isCharging { self.devices[index].isCharging = c }
+                        if let s = qs.cleanState { self.devices[index].cleanState = s }
+                        if let t = qs.cleanStateText { self.devices[index].cleanStateText = t }
                     }
                 }
                 self.deviceService.saveCachedDevices(self.devices)

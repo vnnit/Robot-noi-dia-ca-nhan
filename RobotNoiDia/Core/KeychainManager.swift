@@ -46,6 +46,8 @@ public final class KeychainManager {
         setKeychain(token, forKey: keyToken)
         
         userDefaults.set(account, forKey: keyAccount)
+        userDefaults.set(passwordHash, forKey: keyPasswordHash)
+        userDefaults.set(token, forKey: keyToken)
         userDefaults.set(userId, forKey: keyUserId)
         userDefaults.set(expiresAt, forKey: keyExpiresAt)
         userDefaults.set(country, forKey: keyCountry)
@@ -54,6 +56,7 @@ public final class KeychainManager {
     
     public func updateToken(token: String, expiresAt: Int) {
         setKeychain(token, forKey: keyToken)
+        userDefaults.set(token, forKey: keyToken)
         userDefaults.set(expiresAt, forKey: keyExpiresAt)
     }
     
@@ -63,7 +66,7 @@ public final class KeychainManager {
     }
     
     public var passwordHash: String? {
-        getKeychain(forKey: keyPasswordHash)
+        getKeychain(forKey: keyPasswordHash) ?? userDefaults.string(forKey: keyPasswordHash)
     }
     
     public var userId: String? {
@@ -71,7 +74,7 @@ public final class KeychainManager {
     }
     
     public var token: String? {
-        getKeychain(forKey: keyToken)
+        getKeychain(forKey: keyToken) ?? userDefaults.string(forKey: keyToken)
     }
     
     public var expiresAt: Int {
@@ -103,6 +106,8 @@ public final class KeychainManager {
         deleteKeychain(forKey: keyToken)
         
         userDefaults.removeObject(forKey: keyAccount)
+        userDefaults.removeObject(forKey: keyPasswordHash)
+        userDefaults.removeObject(forKey: keyToken)
         userDefaults.removeObject(forKey: keyUserId)
         userDefaults.removeObject(forKey: keyExpiresAt)
         userDefaults.removeObject(forKey: keyCountry)

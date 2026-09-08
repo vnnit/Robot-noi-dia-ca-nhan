@@ -71,10 +71,12 @@ public struct CustomToastView: View {
 /// Biểu tượng Robot Hút Bụi Laser LiDAR Ecovacs chuyên dụng
 public struct RobotAvatarView: View {
     public let isCleaning: Bool
+    public let isDarkModel: Bool
     public var size: CGFloat = 54
     
-    public init(isCleaning: Bool, size: CGFloat = 54) {
+    public init(isCleaning: Bool, isDarkModel: Bool = false, size: CGFloat = 54) {
         self.isCleaning = isCleaning
+        self.isDarkModel = isDarkModel
         self.size = size
     }
     
@@ -88,11 +90,17 @@ public struct RobotAvatarView: View {
                     .blur(radius: 4)
             }
             
-            // Thân Robot tròn (Chassis kim loại tối màu)
+            // Thân Robot tròn (Trắng sứ cao cấp hoặc Kim loại đen nòng súng Gunmetal)
             Circle()
                 .fill(
+                    isDarkModel ?
                     LinearGradient(
                         colors: [Color(white: 0.24), Color(white: 0.12)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ) :
+                    LinearGradient(
+                        colors: [Color.white, Color(white: 0.92)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -100,49 +108,49 @@ public struct RobotAvatarView: View {
                 .frame(width: size, height: size)
                 .overlay(
                     Circle()
-                        .stroke(isCleaning ? Color.cyan : Color.white.opacity(0.2), lineWidth: isCleaning ? 2 : 1.2)
+                        .stroke(isCleaning ? Color.cyan : (isDarkModel ? Color.white.opacity(0.25) : Color(white: 0.82)), lineWidth: isCleaning ? 2 : 1.2)
                 )
-                .shadow(color: isCleaning ? Color.cyan.opacity(0.4) : Color.black.opacity(0.5), radius: isCleaning ? 6 : 3)
+                .shadow(color: isCleaning ? Color.cyan.opacity(0.4) : Color.black.opacity(0.35), radius: isCleaning ? 6 : 3)
             
             // Cản va chạm phía trước (Front Bumper Arc)
             Circle()
                 .trim(from: 0.62, to: 0.88)
-                .stroke(isCleaning ? Color.cyan.opacity(0.8) : Color.white.opacity(0.3), lineWidth: max(1.5, size * 0.035))
+                .stroke(isCleaning ? Color.cyan.opacity(0.8) : (isDarkModel ? Color.white.opacity(0.35) : Color(white: 0.72)), lineWidth: max(1.5, size * 0.035))
                 .frame(width: size * 0.86, height: size * 0.86)
                 .rotationEffect(.degrees(45))
             
             // Nắp mở hộp bụi (Dustbin lid groove)
             RoundedRectangle(cornerRadius: 3)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(isDarkModel ? Color.white.opacity(0.12) : Color.black.opacity(0.08), lineWidth: 1)
                 .frame(width: size * 0.46, height: size * 0.32)
                 .offset(y: size * 0.14)
             
             // Tháp cảm biến Laser LiDAR (D-ToF LDS Tower)
             Circle()
                 .fill(
-                    LinearGradient(
-                        colors: isCleaning ? [Color.cyan, Color.blue] : [Color(white: 0.34), Color(white: 0.2)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+                    isCleaning ?
+                    LinearGradient(colors: [Color.cyan, Color.blue], startPoint: .top, endPoint: .bottom) :
+                    (isDarkModel ?
+                     LinearGradient(colors: [Color(white: 0.34), Color(white: 0.2)], startPoint: .top, endPoint: .bottom) :
+                     LinearGradient(colors: [Color.white, Color(white: 0.86)], startPoint: .top, endPoint: .bottom))
                 )
                 .frame(width: size * 0.36, height: size * 0.36)
                 .offset(y: -size * 0.12)
                 .overlay(
                     Circle()
-                        .stroke(Color.white.opacity(0.4), lineWidth: 1)
+                        .stroke(isDarkModel ? Color.white.opacity(0.4) : Color(white: 0.78), lineWidth: 1)
                         .offset(y: -size * 0.12)
                 )
             
             // Mắt quét Laser LiDAR phát sáng
             Circle()
-                .fill(isCleaning ? Color.white : Color.cyan.opacity(0.8))
+                .fill(isCleaning ? Color.white : (isDarkModel ? Color.cyan.opacity(0.85) : Color.blue.opacity(0.8)))
                 .frame(width: size * 0.12, height: size * 0.12)
                 .offset(y: -size * 0.12)
             
             // Nút nguồn / Khởi động (LED Power Button)
             Circle()
-                .fill(isCleaning ? Color.green : Color.white.opacity(0.6))
+                .fill(isCleaning ? Color.green : (isDarkModel ? Color.white.opacity(0.6) : Color(white: 0.5)))
                 .frame(width: size * 0.1, height: size * 0.1)
                 .offset(y: size * 0.25)
                 .shadow(color: isCleaning ? Color.green.opacity(0.8) : Color.clear, radius: 3)
@@ -151,154 +159,301 @@ public struct RobotAvatarView: View {
     }
 }
 
-/// Mô phỏng hình ảnh Robot DEEBOT cùng Trạm Sạc / Dock OMNI như ảnh thực tế (Hình 1)
+/// Mô phỏng hình ảnh Robot DEEBOT cùng Trạm Sạc / Dock OMNI chuẩn model (Hình 1)
+/// Tự động thích ứng ngoại hình:
+/// - DEEBOT T10 TURBO / OMNI: Robot trắng sứ + Trạm giẻ OMNI màu trắng cao cấp
+/// - DEEBOT T9 AIVI / T8 AIVI: Robot đen nòng súng (Gunmetal) + Trạm sạc / trạm hút rác tự động đen bóng
 public struct RobotStationHeroView: View {
     public let modelName: String
     public let isCleaning: Bool
+    public let isDarkModel: Bool
     
-    public init(modelName: String = "DEEBOT T10 TURBO", isCleaning: Bool = false) {
+    public init(modelName: String = "DEEBOT", isCleaning: Bool = false, isDarkModel: Bool = false) {
         self.modelName = modelName
         self.isCleaning = isCleaning
+        self.isDarkModel = isDarkModel
     }
     
     public var body: some View {
         ZStack {
             // Bóng đổ sàn nhà (Floor Shadow)
             Ellipse()
-                .fill(Color.black.opacity(0.12))
+                .fill(Color.black.opacity(isDarkModel ? 0.16 : 0.12))
                 .frame(width: 290, height: 42)
                 .blur(radius: 12)
                 .offset(y: 115)
             
-            // 1. Trạm sạc đa năng (OMNI / TURBO Dock Station)
-            ZStack(alignment: .top) {
-                // Thân trạm chính
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(white: 0.98), Color(white: 0.92)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 175, height: 215)
-                    .shadow(color: Color.black.opacity(0.08), radius: 10, x: -4, y: 6)
-                
-                // Nắp bình nước sạch/bẩn phía trên
-                VStack(spacing: 0) {
-                    RoundedRectangle(cornerRadius: 18)
-                        .fill(Color(white: 0.94))
-                        .frame(width: 175, height: 44)
-                        .overlay(
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(height: 1),
-                            alignment: .bottom
-                        )
-                    
-                    Spacer()
-                    
-                    // Khoang đỗ robot và giẻ lau ở đáy trạm
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(white: 0.2))
-                            .frame(width: 155, height: 70)
-                        
-                        // Chi tiết bên trong khoang sạc
-                        HStack(spacing: 12) {
-                            Rectangle()
-                                .fill(Color(white: 0.35))
-                                .frame(width: 32, height: 18)
-                                .cornerRadius(4)
-                            Rectangle()
-                                .fill(Color(white: 0.15))
-                                .frame(width: 44, height: 14)
-                                .cornerRadius(2)
-                        }
-                    }
-                    .padding(.bottom, 6)
-                }
-                .frame(width: 175, height: 215)
-                
-                // Logo Ecovacs trên trạm sạc
-                Circle()
-                    .stroke(Color.gray.opacity(0.35), lineWidth: 1.5)
-                    .frame(width: 16, height: 16)
-                    .overlay(
-                        Text("E")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.gray)
-                    )
-                    .padding(.top, 65)
-            }
-            .offset(x: -38, y: -10)
-            
-            // 2. Robot Hút Bụi DEEBOT màu trắng (Đỗ phía trước trạm)
-            ZStack {
-                // Bóng đổ của robot
-                Circle()
-                    .fill(Color.black.opacity(0.2))
-                    .frame(width: 155, height: 155)
-                    .blur(radius: 6)
-                    .offset(x: 4, y: 8)
-                
-                // Thân tròn robot (Chassis trắng cao cấp)
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [Color.white, Color(white: 0.93)],
-                            center: .center,
-                            startRadius: 10,
-                            endRadius: 80
-                        )
-                    )
-                    .frame(width: 155, height: 155)
-                    .overlay(
-                        Circle()
-                            .stroke(isCleaning ? Color.cyan : Color(white: 0.85), lineWidth: isCleaning ? 2.5 : 1.5)
-                    )
-                    .shadow(color: Color.black.opacity(0.12), radius: 8, x: 2, y: 4)
-                
-                // Cản trước và khe cảm biến AIVI
-                Circle()
-                    .trim(from: 0.65, to: 0.85)
-                    .stroke(Color(white: 0.75), lineWidth: 3)
-                    .frame(width: 142, height: 142)
-                    .rotationEffect(.degrees(40))
-                
-                // Tháp cảm biến Laser LiDAR (D-ToF LDS Tower)
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.white, Color(white: 0.88)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 54, height: 54)
-                    .overlay(
-                        Circle()
-                            .stroke(Color(white: 0.8), lineWidth: 1.2)
-                    )
-                    .shadow(color: Color.black.opacity(0.1), radius: 4, x: 1, y: 2)
-                    .overlay(
-                        Circle()
-                            .stroke(isCleaning ? Color.cyan : Color.gray.opacity(0.4), lineWidth: 1.5)
-                            .frame(width: 20, height: 20)
-                            .overlay(
-                                Text("E")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(isCleaning ? .cyan : .gray)
+            // 1. Trạm sạc đa năng (Dock Station)
+            if isDarkModel {
+                // Trạm sạc / Auto-Empty Dock cho dòng T9 AIVI / T8 AIVI (Đen carbon sang trọng)
+                ZStack(alignment: .top) {
+                    // Thân trạm chính màu đen nòng súng
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(white: 0.25), Color(white: 0.15)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
                             )
-                    )
-                
-                // Logo DEEBOT in chìm
-                Text("DEEBOT")
-                    .font(.system(size: 7, weight: .bold, design: .rounded))
-                    .foregroundColor(Color(white: 0.6))
-                    .offset(y: 48)
+                        )
+                        .frame(width: 160, height: 195)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.2), radius: 10, x: -4, y: 6)
+                    
+                    // Tháp gom bụi tự động Auto-Empty Tower
+                    VStack(spacing: 0) {
+                        // Nắp trạm trên cùng
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color(white: 0.2))
+                            .frame(width: 160, height: 38)
+                            .overlay(
+                                Rectangle()
+                                    .fill(Color.white.opacity(0.08))
+                                    .frame(height: 1),
+                                alignment: .bottom
+                            )
+                        
+                        Spacer()
+                        
+                        // Cửa khoang hút bụi / chân tiếp xúc sạc
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color(white: 0.1))
+                                .frame(width: 140, height: 60)
+                            
+                            HStack(spacing: 16) {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color.yellow.opacity(0.85))
+                                    .frame(width: 14, height: 8)
+                                Circle()
+                                    .fill(Color(white: 0.28))
+                                    .frame(width: 28, height: 28)
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color.yellow.opacity(0.85))
+                                    .frame(width: 14, height: 8)
+                            }
+                        }
+                        .padding(.bottom, 6)
+                    }
+                    .frame(width: 160, height: 195)
+                    
+                    // Đèn LED chỉ báo trạng thái trạm (Xanh dương / Trắng)
+                    Circle()
+                        .fill(Color.cyan.opacity(0.9))
+                        .frame(width: 6, height: 6)
+                        .shadow(color: Color.cyan, radius: 4)
+                        .padding(.top, 16)
+                    
+                    // Logo Ecovacs khắc chìm trên trạm
+                    Circle()
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1.2)
+                        .frame(width: 18, height: 18)
+                        .overlay(
+                            Text("E")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(Color.white.opacity(0.5))
+                        )
+                        .padding(.top, 56)
+                }
+                .offset(x: -38, y: 0)
+            } else {
+                // Trạm OMNI giặt sấy giẻ cho dòng T10 TURBO (Trắng sứ tinh khôi)
+                ZStack(alignment: .top) {
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(white: 0.98), Color(white: 0.92)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 175, height: 215)
+                        .shadow(color: Color.black.opacity(0.08), radius: 10, x: -4, y: 6)
+                    
+                    VStack(spacing: 0) {
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Color(white: 0.94))
+                            .frame(width: 175, height: 44)
+                            .overlay(
+                                Rectangle()
+                                    .fill(Color.gray.opacity(0.2))
+                                    .frame(height: 1),
+                                alignment: .bottom
+                            )
+                        
+                        Spacer()
+                        
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(white: 0.2))
+                                .frame(width: 155, height: 70)
+                            
+                            HStack(spacing: 12) {
+                                Rectangle()
+                                    .fill(Color(white: 0.35))
+                                    .frame(width: 32, height: 18)
+                                    .cornerRadius(4)
+                                Rectangle()
+                                    .fill(Color(white: 0.15))
+                                    .frame(width: 44, height: 14)
+                                    .cornerRadius(2)
+                            }
+                        }
+                        .padding(.bottom, 6)
+                    }
+                    .frame(width: 175, height: 215)
+                    
+                    Circle()
+                        .stroke(Color.gray.opacity(0.35), lineWidth: 1.5)
+                        .frame(width: 16, height: 16)
+                        .overlay(
+                            Text("E")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.gray)
+                        )
+                        .padding(.top, 65)
+                }
+                .offset(x: -38, y: -10)
             }
-            .offset(x: 52, y: 35)
+            
+            // 2. Robot Hút Bụi DEEBOT đỗ phía trước trạm
+            if isDarkModel {
+                // Thân Robot DEEBOT T9 AIVI (Màu đen bóng Carbon / Nòng súng cao cấp)
+                ZStack {
+                    Circle()
+                        .fill(Color.black.opacity(0.25))
+                        .frame(width: 155, height: 155)
+                        .blur(radius: 6)
+                        .offset(x: 4, y: 8)
+                    
+                    // Thân tròn chassis kim loại tối màu
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [Color(white: 0.28), Color(white: 0.13)],
+                                center: .center,
+                                startRadius: 10,
+                                endRadius: 80
+                            )
+                        )
+                        .frame(width: 155, height: 155)
+                        .overlay(
+                            Circle()
+                                .stroke(isCleaning ? Color.cyan : Color.white.opacity(0.2), lineWidth: isCleaning ? 2.5 : 1.5)
+                        )
+                        .shadow(color: Color.black.opacity(0.35), radius: 8, x: 2, y: 4)
+                    
+                    // Cản trước và camera kép AIVI 3D nhận diện vật thể
+                    Circle()
+                        .trim(from: 0.65, to: 0.85)
+                        .stroke(Color.white.opacity(0.3), lineWidth: 3)
+                        .frame(width: 142, height: 142)
+                        .rotationEffect(.degrees(40))
+                    
+                    // Tháp cảm biến Laser LiDAR (D-ToF LDS Tower) màu đen
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(white: 0.32), Color(white: 0.18)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 54, height: 54)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.25), lineWidth: 1.2)
+                        )
+                        .shadow(color: Color.black.opacity(0.3), radius: 4, x: 1, y: 2)
+                        .overlay(
+                            Circle()
+                                .stroke(isCleaning ? Color.cyan : Color.cyan.opacity(0.7), lineWidth: 1.5)
+                                .frame(width: 20, height: 20)
+                                .overlay(
+                                    Text("E")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(Color.cyan)
+                                )
+                        )
+                    
+                    // Huy hiệu DEEBOT • AIVI
+                    HStack(spacing: 3) {
+                        Text("DEEBOT")
+                            .font(.system(size: 7, weight: .bold, design: .rounded))
+                            .foregroundColor(Color(white: 0.75))
+                        Text("AIVI")
+                            .font(.system(size: 7, weight: .black, design: .rounded))
+                            .foregroundColor(Color.cyan)
+                    }
+                    .offset(y: 48)
+                }
+                .offset(x: 52, y: 35)
+            } else {
+                // Thân Robot DEEBOT T10 TURBO (Màu trắng sứ tinh khôi)
+                ZStack {
+                    Circle()
+                        .fill(Color.black.opacity(0.2))
+                        .frame(width: 155, height: 155)
+                        .blur(radius: 6)
+                        .offset(x: 4, y: 8)
+                    
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [Color.white, Color(white: 0.93)],
+                                center: .center,
+                                startRadius: 10,
+                                endRadius: 80
+                            )
+                        )
+                        .frame(width: 155, height: 155)
+                        .overlay(
+                            Circle()
+                                .stroke(isCleaning ? Color.cyan : Color(white: 0.85), lineWidth: isCleaning ? 2.5 : 1.5)
+                        )
+                        .shadow(color: Color.black.opacity(0.12), radius: 8, x: 2, y: 4)
+                    
+                    Circle()
+                        .trim(from: 0.65, to: 0.85)
+                        .stroke(Color(white: 0.75), lineWidth: 3)
+                        .frame(width: 142, height: 142)
+                        .rotationEffect(.degrees(40))
+                    
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white, Color(white: 0.88)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 54, height: 54)
+                        .overlay(
+                            Circle()
+                                .stroke(Color(white: 0.8), lineWidth: 1.2)
+                        )
+                        .shadow(color: Color.black.opacity(0.1), radius: 4, x: 1, y: 2)
+                        .overlay(
+                            Circle()
+                                .stroke(isCleaning ? Color.cyan : Color.gray.opacity(0.4), lineWidth: 1.5)
+                                .frame(width: 20, height: 20)
+                                .overlay(
+                                    Text("E")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(isCleaning ? .cyan : .gray)
+                                )
+                        )
+                    
+                    Text("DEEBOT")
+                        .font(.system(size: 7, weight: .bold, design: .rounded))
+                        .foregroundColor(Color(white: 0.6))
+                        .offset(y: 48)
+                }
+                .offset(x: 52, y: 35)
+            }
         }
         .frame(height: 270)
     }

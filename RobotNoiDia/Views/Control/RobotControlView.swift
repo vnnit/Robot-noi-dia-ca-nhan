@@ -10,7 +10,6 @@ public struct RobotControlView: View {
     
     @State private var showRenameAlert: Bool = false
     @State private var newNameText: String = ""
-    @State private var showDebugJsonSheet: Bool = false
     @State private var showBanner: Bool = true
     
     public init(device: DeviceModel) {
@@ -549,9 +548,6 @@ public struct RobotControlView: View {
         .sheet(isPresented: $viewModel.showMoreSettings) {
             SettingsTabView(viewModel: viewModel)
         }
-        .sheet(isPresented: $showDebugJsonSheet) {
-            DeviceDebugView(jsonText: viewModel.device.debugJsonFormatted)
-        }
         .alert("Đổi tên Robot", isPresented: $showRenameAlert) {
             TextField("Nhập tên mới", text: $newNameText)
             Button("Lưu") {
@@ -763,63 +759,6 @@ public struct RealisticEcovacsMapView: View {
                     .position(x: w * 0.40, y: h * 0.36)
                 }
             }
-        }
-    }
-}
-
-// MARK: - View Hiển thị & Sao chép Debug JSON Thiết bị
-public struct DeviceDebugView: View {
-    let jsonText: String
-    @Environment(\.presentationMode) var presentationMode
-    @State private var copied: Bool = false
-    
-    public init(jsonText: String) {
-        self.jsonText = jsonText
-    }
-    
-    public var body: some View {
-        NavigationView {
-            VStack(spacing: 12) {
-                HStack {
-                    Text("Dữ liệu JSON Thiết bị")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.gray)
-                    Spacer()
-                    Button(action: {
-                        UIPasteboard.general.string = jsonText
-                        copied = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                            Text(copied ? "Đã sao chép" : "Sao chép JSON")
-                        }
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 7)
-                        .background(Color(red: 0.09, green: 0.47, blue: 1.0))
-                        .cornerRadius(8)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                
-                ScrollView {
-                    Text(jsonText)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(Color(white: 0.15))
-                        .padding(14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(white: 0.95))
-                        .cornerRadius(12)
-                        .padding(.horizontal, 16)
-                }
-            }
-            .navigationBarTitle("Debug JSON Thiết bị", displayMode: .inline)
-            .navigationBarItems(trailing: Button("Đóng") {
-                presentationMode.wrappedValue.dismiss()
-            })
         }
     }
 }

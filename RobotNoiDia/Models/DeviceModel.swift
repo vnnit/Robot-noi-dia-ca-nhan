@@ -134,6 +134,14 @@ public struct DeviceModel: Identifiable, Codable, Hashable {
         return text.contains("T10") || text.contains("T20") || text.contains("T30") || text.contains("X1") || text.contains("X2")
     }
     
+    public var isDarkModel: Bool {
+        let text = (friendlyModelName + " " + model + " " + deviceClass).uppercased()
+        if text.contains("T9") || text.contains("T8") || text.contains("8KWDB4") || text.contains("YNA5XI") || text.contains("BLACK") || (text.contains("AIVI") && !text.contains("T10")) {
+            return true
+        }
+        return false
+    }
+    
     public init(
         did: String,
         name: String,

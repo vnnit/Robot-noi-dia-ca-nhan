@@ -9,8 +9,8 @@ public final class EcovacsDeviceService {
     
     private init() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 10.0
-        config.timeoutIntervalForResource = 15.0
+        config.timeoutIntervalForRequest = 4.0
+        config.timeoutIntervalForResource = 6.0
         self.session = URLSession(configuration: config)
     }
     
@@ -191,6 +191,7 @@ public final class EcovacsDeviceService {
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = 3.5
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Eco-Iot-Direct", forHTTPHeaderField: "User-Agent")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -200,7 +201,40 @@ public final class EcovacsDeviceService {
         return json
     }
     
-    // MARK: - 3. Lấy Trạng thái Thời gian thực (Live State)
+    // MARK: - Lấy nhanh pin và trạng thái dọn dẹp cho danh sách (siêu nhanh < 1s)
+    public func getQuickStatus(device: DeviceModel) async -> (battery: Int?, isCharging: Bool?, cleanState: String?, cleanStateText: String?) {
+        async let battRes = try? executeCommand(device: device, cmdName: "getBattery")
+        async let cleanRes = try? executeCommand(device: device, cmdName: "getCleanInfo")
+        
+        let (batt, clean) = await (battRes, cleanRes)
+        var battery: Int? = nil
+        var isCharging: Bool? = nil
+        var cleanState: String? = nil
+        var cleanStateText: String? = nil
+        
+        if let b = batt, let body = extractBodyData(b) {
+            if let val = body["value"] as? Int { battery = val }
+        }
+        if let cl = clean, let body = extractBodyData(cl) {
+            if let st = body["state"] as? String {
+                cleanState = st
+                switch st {
+                case "clean": cleanStateText = "Đang dọn dẹp"
+                case "pause": cleanStateText = "Đang tạm dừng"
+                case "stop": cleanStateText = "Đã dừng dọn"
+                case "go_charging": cleanStateText = "Đang về trạm sạc"
+                case "charging":
+                    cleanStateText = "Đang sạc pin"
+                    isCharging = true
+                default:
+                    cleanStateText = "Nghỉ ngơi / Chờ lệnh"
+                }
+            }
+        }
+        return (battery, isCharging, cleanState, cleanStateText)
+    }
+    
+    // MARK: - 3. Lấy Trạng thái Thời gian thực Đầy đủ (Full Live State)
     public func getDeviceState(device: DeviceModel) async -> DeviceState {
         var state = DeviceState.initial
         
