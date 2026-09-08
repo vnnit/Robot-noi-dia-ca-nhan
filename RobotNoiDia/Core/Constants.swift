@@ -18,7 +18,18 @@ public enum Constants {
     
     public static let loginApiBaseUrl = "https://gl-cn-api.ecovacs.cn"
     public static let openApiBaseUrl = "https://gl-cn-openapi.ecovacs.cn"
-    public static let portalApiBaseUrl = "https://portal-ww.ecouser.net"
+    public static let portalApiBaseUrl = "https://portal.ecouser.net"
+    
+    public static func portalUrl(for country: String = "CN") -> String {
+        let code = country.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if code == "CN" {
+            return "https://portal.ecouser.net"
+        } else if code == "US" || code == "CA" {
+            return "https://portal-na.ecouser.net"
+        } else {
+            return "https://portal-ww.ecouser.net"
+        }
+    }
     
     public static let mqttBrokerHost = "iot-cn.ecovacs.com"
     public static let mqttBrokerPort: UInt16 = 8883

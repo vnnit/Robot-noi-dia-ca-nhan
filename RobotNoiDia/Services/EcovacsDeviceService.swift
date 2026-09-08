@@ -17,7 +17,8 @@ public final class EcovacsDeviceService {
     // MARK: - 1. Lấy danh sách Robot từ Ecovacs Cloud
     public func fetchDevices() async throws -> [DeviceModel] {
         let creds = try await authService.ensureValidToken()
-        guard let url = URL(string: Constants.portalApiBaseUrl + "/api/users/user.do") else {
+        let portalUrl = Constants.portalUrl(for: keychain.country)
+        guard let url = URL(string: portalUrl + "/api/users/user.do") else {
             throw NSError(domain: "EcovacsDevice", code: -1, userInfo: [NSLocalizedDescriptionKey: "Sai URL"])
         }
         
@@ -94,7 +95,8 @@ public final class EcovacsDeviceService {
             URLQueryItem(name: "av", value: "1.3.1")
         ]
         
-        guard var comp = URLComponents(string: Constants.portalApiBaseUrl + "/api/iot/devmanager.do") else {
+        let portalUrl = Constants.portalUrl(for: keychain.country)
+        guard var comp = URLComponents(string: portalUrl + "/api/iot/devmanager.do") else {
             throw NSError(domain: "EcovacsDevice", code: -1, userInfo: [NSLocalizedDescriptionKey: "Sai URL devmanager"])
         }
         comp.queryItems = queryItems

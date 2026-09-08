@@ -219,7 +219,8 @@ public final class EcovacsAuthService {
         deviceId: String,
         country: String
     ) async throws -> (userId: String, token: String, expiresAt: Int) {
-        guard let url = URL(string: Constants.portalApiBaseUrl + "/api/users/user.do") else {
+        let portalUrl = Constants.portalUrl(for: country)
+        guard let url = URL(string: portalUrl + "/api/users/user.do") else {
             throw NSError(domain: "EcovacsAuth", code: -1, userInfo: [NSLocalizedDescriptionKey: "Sai URL Portal User"])
         }
         
@@ -235,23 +236,43 @@ public final class EcovacsAuthService {
             "todo": "loginByItToken"
         ]
         
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        var lastErrorMsg = "Xác thực Portal IT Token thất bại."
         
-        let (data, _) = try await session.data(for: request)
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let result = json["result"] as? String, result == "ok",
-              let token = json["token"] as? String else {
-            throw NSError(domain: "EcovacsAuth", code: -1, userInfo: [NSLocalizedDescriptionKey: "Xác thực Portal IT Token thất bại."])
+        for attempt in 1...3 {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            
+            do {
+                let (data, _) = try await session.data(for: request)
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    if let result = json["result"] as? String, result == "ok",
+                       let token = json["token"] as? String {
+                        let finalUid = (json["userId"] as? String) ?? userId
+                        let lastDurationMs = Double(json["last"] as? String ?? "604800000") ?? 604800000.0 // 7 days default
+                        let validitySeconds = (lastDurationMs / 1000.0) * 0.95
+                        let expiresAt = Int(Date().timeIntervalSince1970 + validitySeconds)
+                        return (finalUid, token, expiresAt)
+                    }
+                    
+                    if let err = json["error"] as? String {
+                        lastErrorMsg = "Lỗi máy chủ Ecovacs: \(err)"
+                        if err == "set token error." && attempt < 3 {
+                            try? await Task.sleep(nanoseconds: 1_000_000_000)
+                            continue
+                        }
+                    }
+                }
+            } catch {
+                lastErrorMsg = error.localizedDescription
+            }
+            
+            if attempt < 3 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
         }
         
-        let finalUid = (json["userId"] as? String) ?? userId
-        let lastDurationMs = Double(json["last"] as? String ?? "604800000") ?? 604800000.0 // 7 days default
-        let validitySeconds = (lastDurationMs / 1000.0) * 0.95
-        let expiresAt = Int(Date().timeIntervalSince1970 + validitySeconds)
-        
-        return (finalUid, token, expiresAt)
+        throw NSError(domain: "EcovacsAuth", code: -1, userInfo: [NSLocalizedDescriptionKey: lastErrorMsg])
     }
 }
