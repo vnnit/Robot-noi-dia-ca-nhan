@@ -93,10 +93,12 @@ jobs:
         run: |
           mkdir -p Payload
           find ./build/RobotNoiDia.xcarchive/Products/Applications -name "*.app" -maxdepth 1 -exec cp -r {} Payload/ \;
+          find Payload/ -name ".DS_Store" -delete || true
+          chmod -R 755 Payload/
           ls -la Payload/
           
           IPA_FILE="${{ steps.vars.outputs.IPA_NAME }}"
-          zip -r -9 "${IPA_FILE}" Payload
+          zip -qry "${IPA_FILE}" Payload
           ls -lh "${IPA_FILE}"
 
       - name: Upload IPA as Artifact
