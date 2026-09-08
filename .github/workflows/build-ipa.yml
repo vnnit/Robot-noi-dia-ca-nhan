@@ -2,21 +2,18 @@ name: Build & Release iOS IPA
 
 on:
   push:
-    branches:
-      - main
-      - master
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Phiên bản (ví dụ: v1.0.0)'
+        description: 'Phiên bản (ví dụ: v1.0.1)'
         required: true
-        default: 'v1.0.0'
+        default: 'v1.0.1'
       release_notes:
-        description: 'Ghi chú thay đổi (Release Notes)'
+        description: 'Ghi chú phiên bản (Release Notes)'
         required: false
-        default: 'Bản phát hành đầu tiên: Điều khiển trực tiếp Ecovacs Deebot không qua server, lưu session vĩnh viễn.'
+        default: 'Cập nhật icon chính thức Ecovacs Home, tối ưu kết nối trực tiếp.'
 
 permissions:
   contents: write
@@ -79,7 +76,7 @@ jobs:
 
       - name: Create GitHub Release with IPA
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
           tag_name: ${{ steps.vars.outputs.VERSION }}
           name: Robot Nội Địa - ${{ steps.vars.outputs.VERSION }}
