@@ -24,16 +24,6 @@ public final class AppState: ObservableObject {
         if keychain.hasSavedSession {
             // Đã có tài khoản lưu vĩnh viễn -> Vào thẳng màn hình chọn Robot
             self.currentScreen = .robotPicker
-            
-            // Chạy gia hạn token & đồng bộ dữ liệu ngầm trong nền
-            Task {
-                do {
-                    _ = try await authService.ensureValidToken()
-                    _ = try await EcovacsDeviceService.shared.fetchDevices()
-                } catch {
-                    print("[AppState] Silent refresh failed, but keeping session: \(error)")
-                }
-            }
         } else {
             self.currentScreen = .login
         }

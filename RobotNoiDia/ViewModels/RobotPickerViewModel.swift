@@ -18,20 +18,23 @@ public final class RobotPickerViewModel: ObservableObject {
         self.isLoading = cached.isEmpty
     }
     
-    public func loadDevices(showLoading: Bool = false) {
-        if showLoading && devices.isEmpty {
+    public func loadDevices(showLoading: Bool = false, forceRefreshAuth: Bool = false) {
+        if showLoading || devices.isEmpty {
             isLoading = true
         }
         errorMessage = nil
         
         Task {
             do {
-                let fetched = try await deviceService.fetchDevices()
+                let fetched = try await deviceService.fetchDevices(forceRefreshAuth: forceRefreshAuth)
                 
                 // Hiển thị danh sách robot
                 self.devices = fetched
                 self.isLoading = false
                 self.isRefreshing = false
+                if fetched.isEmpty {
+                    self.errorMessage = "Chưa tìm thấy robot nào trong tài khoản."
+                }
                 
                 // Nạp nhanh pin & dọn dẹp chạy ngầm không chặn giao diện
                 await withTaskGroup(of: (Int, Int?, Bool?, String?, String?).self) { group in

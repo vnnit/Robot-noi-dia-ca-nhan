@@ -9,8 +9,8 @@ public final class EcovacsDeviceService {
     
     private init() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 4.0
-        config.timeoutIntervalForResource = 6.0
+        config.timeoutIntervalForRequest = 15.0
+        config.timeoutIntervalForResource = 25.0
         self.session = URLSession(configuration: config)
     }
     
@@ -44,14 +44,18 @@ public final class EcovacsDeviceService {
     }
     
     // MARK: - 1. Lấy danh sách Robot từ Ecovacs Cloud
-    public func fetchDevices() async throws -> [DeviceModel] {
-        do {
-            let creds = try await authService.ensureValidToken()
-            let portalUrl = Constants.portalUrl(for: keychain.country)
-            guard let url = URL(string: portalUrl + "/api/users/user.do") else {
-                throw NSError(domain: "EcovacsDevice", code: -1, userInfo: [NSLocalizedDescriptionKey: "Sai URL"])
-            }
-            
+    public func fetchDevices(forceRefreshAuth: Bool = false) async throws -> [DeviceModel] {
+        var creds = forceRefreshAuth ? (try await authService.forceRefreshToken()) : (try await authService.ensureValidToken())
+        let portalUrl = Constants.portalUrl(for: keychain.country)
+        guard let url = URL(string: portalUrl + "/api/users/user.do") else {
+            throw NSError(domain: "EcovacsDevice", code: -1, userInfo: [NSLocalizedDescriptionKey: "Sai URL kết nối Ecovacs"])
+        }
+        
+        var devicesRaw: [[String: Any]]? = nil
+        var lastErrorMessage: String? = nil
+        
+        // Thử tối đa 2 lần (lần 2 tự động làm mới Token nếu gặp lỗi 1004 / auth error)
+        for attempt in 0..<2 {
             let body: [String: Any] = [
                 "userid": creds.userId,
                 "todo": "GetDeviceList",
@@ -69,67 +73,98 @@ public final class EcovacsDeviceService {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             
-            let (data, _) = try await session.data(for: request)
-            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let devicesRaw = json["devices"] as? [[String: Any]] else {
-                let cached = getCachedDevices()
-                return cached
+            do {
+                let (data, _) = try await session.data(for: request)
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let result = json["result"] as? String ?? ""
+                    let errno = json["errno"] as? Int ?? 0
+                    let errorStr = json["error"] as? String ?? ""
+                    
+                    // Nếu gặp lỗi xác thực hoặc hết hạn token (errno 1004 / auth error / result fail)
+                    if errno == 1004 || result == "fail" || errorStr.lowercased().contains("auth") {
+                        print("[EcovacsDeviceService] Phiên đăng nhập hết hạn (errno: \(errno), error: \(errorStr)). Đang tự động cấp mới Token...")
+                        if attempt == 0 {
+                            creds = try await authService.forceRefreshToken()
+                            continue
+                        } else {
+                            lastErrorMessage = "Phiên đăng nhập đã hết hạn hoặc không hợp lệ. Vui lòng thử lại hoặc đăng nhập lại."
+                            break
+                        }
+                    }
+                    
+                    if let devs = json["devices"] as? [[String: Any]] {
+                        devicesRaw = devs
+                        break
+                    }
+                }
+            } catch {
+                print("[EcovacsDeviceService] Lỗi kết nối mạng: \(error.localizedDescription)")
+                if attempt == 0 {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    continue
+                }
+                lastErrorMessage = "Lỗi kết nối mạng: \(error.localizedDescription)"
             }
-            
-            // Lưu lại chuỗi JSON gốc để người dùng xem debug
-            if let rawData = try? JSONSerialization.data(withJSONObject: devicesRaw, options: .prettyPrinted),
-               let rawStr = String(data: rawData, encoding: .utf8) {
-                UserDefaults.standard.set(rawStr, forKey: rawJsonCacheKey)
-            }
-            
-            var list: [DeviceModel] = []
-            let existingCache = getCachedDevices()
-            
-            for d in devicesRaw {
-                guard let did = d["did"] as? String, !did.isEmpty else { continue }
-                let name = (d["deviceName"] as? String) ?? (d["name"] as? String) ?? "DEEBOT"
-                let nick = (d["nick"] as? String)
-                let model = (d["model"] as? String) ?? (d["product_category"] as? String) ?? "DEEBOT"
-                let devClass = (d["class"] as? String) ?? "yna5xi"
-                let company = (d["company"] as? String) ?? "eco-ng"
-                let status = (d["status"] as? Int) ?? 1
-                let icon = d["icon"] as? String
-                let fwVer = (d["version"] as? String) ?? "v1.9.7"
-                let res = (d["resource"] as? String) ?? "pwMl"
-                
-                // Giữ lại trạng thái pin/hoạt động đã lưu trong cache trước đó
-                let cachedDev = existingCache.first(where: { $0.did == did })
-                
-                let modelObj = DeviceModel(
-                    did: did,
-                    name: name,
-                    nick: nick,
-                    model: model,
-                    deviceClass: devClass,
-                    company: company,
-                    status: status,
-                    icon: icon,
-                    fwVer: fwVer,
-                    resource: res,
-                    battery: cachedDev?.battery,
-                    isCharging: cachedDev?.isCharging,
-                    cleanState: cachedDev?.cleanState,
-                    cleanStateText: cachedDev?.cleanStateText
-                )
-                list.append(modelObj)
-            }
-            
-            if !list.isEmpty {
-                saveCachedDevices(list)
-            }
-            return list
-        } catch {
+        }
+        
+        guard let validDevicesRaw = devicesRaw else {
             let cached = getCachedDevices()
             if !cached.isEmpty {
                 return cached
             }
-            throw error
+            if let msg = lastErrorMessage {
+                throw NSError(domain: "EcovacsDevice", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
+            }
+            throw NSError(domain: "EcovacsDevice", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không nhận được danh sách thiết bị từ máy chủ Ecovacs."])
         }
+        
+        // Lưu lại chuỗi JSON gốc để xem debug
+        if let rawData = try? JSONSerialization.data(withJSONObject: validDevicesRaw, options: .prettyPrinted),
+           let rawStr = String(data: rawData, encoding: .utf8) {
+            UserDefaults.standard.set(rawStr, forKey: rawJsonCacheKey)
+        }
+        
+        var list: [DeviceModel] = []
+        let existingCache = getCachedDevices()
+        
+        for d in validDevicesRaw {
+            guard let did = d["did"] as? String, !did.isEmpty else { continue }
+            let name = (d["deviceName"] as? String) ?? (d["name"] as? String) ?? "DEEBOT"
+            let nick = (d["nick"] as? String)
+            let model = (d["model"] as? String) ?? (d["product_category"] as? String) ?? "DEEBOT"
+            let devClass = (d["class"] as? String) ?? "yna5xi"
+            let company = (d["company"] as? String) ?? "eco-ng"
+            let status = (d["status"] as? Int) ?? 1
+            let icon = d["icon"] as? String
+            let fwVer = (d["version"] as? String) ?? "v1.9.7"
+            let res = (d["resource"] as? String) ?? "pwMl"
+            
+            // Giữ lại trạng thái pin/hoạt động đã lưu trong cache trước đó
+            let cachedDev = existingCache.first(where: { $0.did == did })
+            
+            let modelObj = DeviceModel(
+                did: did,
+                name: name,
+                nick: nick,
+                model: model,
+                deviceClass: devClass,
+                company: company,
+                status: status,
+                icon: icon,
+                fwVer: fwVer,
+                resource: res,
+                battery: cachedDev?.battery,
+                isCharging: cachedDev?.isCharging,
+                cleanState: cachedDev?.cleanState,
+                cleanStateText: cachedDev?.cleanStateText
+            )
+            list.append(modelObj)
+        }
+        
+        if !list.isEmpty {
+            saveCachedDevices(list)
+        }
+        return list
     }
     
     // MARK: - 2. Gửi lệnh chung (Direct CloudCtl REST)

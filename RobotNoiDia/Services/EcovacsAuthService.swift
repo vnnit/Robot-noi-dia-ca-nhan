@@ -69,13 +69,14 @@ public final class EcovacsAuthService {
     }
     
     // MARK: - Tự động gia hạn ngầm (Silent Background Auto-Refresh)
-    public func ensureValidToken() async throws -> AuthCredentials {
+    public func ensureValidToken(force: Bool = false) async throws -> AuthCredentials {
         guard let account = keychain.account,
               let pwdHash = keychain.passwordHash else {
-            throw NSError(domain: "EcovacsAuth", code: 401, userInfo: [NSLocalizedDescriptionKey: "Chưa có thông tin đăng nhập được lưu."])
+            throw NSError(domain: "EcovacsAuth", code: 401, userInfo: [NSLocalizedDescriptionKey: "Chưa có thông tin đăng nhập được lưu. Vui lòng đăng nhập lại."])
         }
         
-        if let token = keychain.token,
+        if !force,
+           let token = keychain.token,
            let uid = keychain.userId,
            !token.isEmpty,
            keychain.expiresAt > Int(Date().timeIntervalSince1970) + 300 {
@@ -87,8 +88,13 @@ public final class EcovacsAuthService {
             )
         }
         
-        // Token hết hạn hoặc sắp hết hạn: Gia hạn ngầm bằng mật khẩu đã lưu
+        // Token hết hạn hoặc bắt buộc làm mới (force = true): Gia hạn bằng mật khẩu đã lưu
         return try await login(account: account, passwordOrHash: pwdHash, country: keychain.country, isHash: true)
+    }
+    
+    // MARK: - Bắt buộc làm mới phiên đăng nhập (khi máy chủ Ecovacs báo lỗi 1004)
+    public func forceRefreshToken() async throws -> AuthCredentials {
+        return try await ensureValidToken(force: true)
     }
     
     // MARK: - Đăng xuất (Chỉ khi người dùng chủ động bấm)

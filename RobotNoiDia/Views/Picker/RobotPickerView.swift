@@ -57,13 +57,13 @@ public struct RobotPickerView: View {
                     }
                     .padding(.trailing, 16)
                     
-                    // Nút quét mã / Quản lý
+                    // Nút làm mới danh sách thiết bị
                     Button(action: {
-                        viewModel.loadDevices(showLoading: false)
-                        showToastNotify("Đã làm mới danh sách thiết bị")
+                        viewModel.loadDevices(showLoading: true, forceRefreshAuth: true)
+                        showToastNotify("Đang làm mới danh sách...")
                     }) {
-                        Image(systemName: "viewfinder")
-                            .font(.system(size: 20))
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 18, weight: .semibold))
                             .foregroundColor(.black)
                     }
                 }
@@ -87,17 +87,41 @@ public struct RobotPickerView: View {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.system(size: 40))
                             .foregroundColor(.orange)
-                        Text("Chưa tìm thấy robot nào trong tài khoản.")
+                        
+                        Text(viewModel.errorMessage ?? "Chưa tìm thấy robot nào trong tài khoản.")
                             .font(.system(size: 15, weight: .medium))
                             .foregroundColor(.black)
-                        Button(action: { viewModel.loadDevices() }) {
-                            Text("Thử lại")
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                        
+                        HStack(spacing: 16) {
+                            Button(action: {
+                                viewModel.loadDevices(showLoading: true, forceRefreshAuth: true)
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "arrow.clockwise")
+                                    Text("Thử lại")
+                                }
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(.white)
-                                .padding(.horizontal, 24)
+                                .padding(.horizontal, 20)
                                 .padding(.vertical, 10)
                                 .background(Color(red: 0.09, green: 0.47, blue: 1.0))
                                 .cornerRadius(8)
+                            }
+                            
+                            Button(action: { showLogoutAlert = true }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                                    Text("Đăng nhập lại")
+                                }
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(Color(white: 0.25))
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(Color(white: 0.92))
+                                .cornerRadius(8)
+                            }
                         }
                     }
                     Spacer()
