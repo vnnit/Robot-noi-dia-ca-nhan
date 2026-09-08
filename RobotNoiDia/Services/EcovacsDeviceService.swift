@@ -32,8 +32,15 @@ public final class EcovacsDeviceService {
         }
     }
     
+    private let rawJsonCacheKey = "cached_raw_devices_json"
+    
+    public func getCachedRawDevicesJson() -> String {
+        return UserDefaults.standard.string(forKey: rawJsonCacheKey) ?? "[]"
+    }
+    
     public func clearCache() {
         UserDefaults.standard.removeObject(forKey: cacheKey)
+        UserDefaults.standard.removeObject(forKey: rawJsonCacheKey)
     }
     
     // MARK: - 1. Lấy danh sách Robot từ Ecovacs Cloud
@@ -67,6 +74,12 @@ public final class EcovacsDeviceService {
                   let devicesRaw = json["devices"] as? [[String: Any]] else {
                 let cached = getCachedDevices()
                 return cached
+            }
+            
+            // Lưu lại chuỗi JSON gốc để người dùng xem debug
+            if let rawData = try? JSONSerialization.data(withJSONObject: devicesRaw, options: .prettyPrinted),
+               let rawStr = String(data: rawData, encoding: .utf8) {
+                UserDefaults.standard.set(rawStr, forKey: rawJsonCacheKey)
             }
             
             var list: [DeviceModel] = []

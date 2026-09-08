@@ -14,6 +14,7 @@ struct RobotNoiDiaApp: App {
                     RobotPickerView()
                 case .robotControl(let device):
                     RobotControlView(device: device)
+                        .id(device.did)
                 }
             }
             .environmentObject(appState)

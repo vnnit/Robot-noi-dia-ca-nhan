@@ -25,17 +25,26 @@ public struct DeviceModel: Identifiable, Codable, Hashable {
         UserDefaults.standard.string(forKey: "custom_robot_name_\(did)")
     }
     
+    private var isLikelySerialCode: Bool {
+        let cleaned = name.trimmingCharacters(in: .whitespaces)
+        if cleaned.count >= 8 && cleaned.range(of: "^[A-Z0-9_-]+$", options: .regularExpression) != nil {
+            return true
+        }
+        return false
+    }
+    
     public var displayName: String {
         if let custom = customNick, !custom.trimmingCharacters(in: .whitespaces).isEmpty {
             return custom.trimmingCharacters(in: .whitespaces)
         }
-        if let nick = nick, !nick.trimmingCharacters(in: .whitespaces).isEmpty {
+        if let nick = nick, !nick.trimmingCharacters(in: .whitespaces).isEmpty, nick != name {
             return nick.trimmingCharacters(in: .whitespaces)
         }
-        if !name.trimmingCharacters(in: .whitespaces).isEmpty {
+        // Nếu tên không phải là mã serial thô (như E0BA14837C09HM0H0516), thì mới hiển thị tên
+        if !name.trimmingCharacters(in: .whitespaces).isEmpty && !isLikelySerialCode {
             return name.trimmingCharacters(in: .whitespaces)
         }
-        return Constants.modelFriendlyNames[deviceClass] ?? Constants.modelFriendlyNames[model] ?? "DEEBOT"
+        return friendlyModelName
     }
     
     public func saveCustomName(_ newName: String) {
@@ -48,7 +57,47 @@ public struct DeviceModel: Identifiable, Codable, Hashable {
     }
     
     public var friendlyModelName: String {
-        Constants.modelFriendlyNames[deviceClass] ?? Constants.modelFriendlyNames[model] ?? model
+        if let friendly = Constants.modelFriendlyNames[deviceClass] { return friendly }
+        if let friendly = Constants.modelFriendlyNames[model] { return friendly }
+        let combined = (model + " " + deviceClass).lowercased()
+        if combined.contains("t10") { return "DEEBOT T10 TURBO" }
+        if combined.contains("t9") { return "DEEBOT T9 AIVI" }
+        if combined.contains("t8") { return "DEEBOT T8 AIVI" }
+        if combined.contains("x1") { return "DEEBOT X1 OMNI" }
+        if combined.contains("t20") { return "DEEBOT T20 PRO" }
+        if combined.contains("t30") { return "DEEBOT T30 PRO" }
+        if !model.isEmpty && model != "DEEBOT" { return "DEEBOT \(model)" }
+        return "DEEBOT"
+    }
+    
+    public var debugJsonFormatted: String {
+        let dict: [String: Any] = [
+            "did": did,
+            "name": name,
+            "nick": nick ?? "",
+            "model": model,
+            "deviceClass": deviceClass,
+            "company": company,
+            "status": status,
+            "fwVer": fwVer ?? "",
+            "resource": resource,
+            "battery": battery ?? 0,
+            "isCharging": isCharging ?? false,
+            "cleanState": cleanState ?? "",
+            "cleanStateText": cleanStateText ?? "",
+            "displayName": displayName,
+            "friendlyModelName": friendlyModelName,
+            "hasCamera": hasCamera,
+            "has3DMap": has3DMap,
+            "hasYiko": hasYiko,
+            "hasOmniStation": hasOmniStation,
+            "hasEdgeDeepCleaning": hasEdgeDeepCleaning
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: dict, options: .prettyPrinted),
+           let str = String(data: data, encoding: .utf8) {
+            return str
+        }
+        return "{}"
     }
     
     public var isOnline: Bool {

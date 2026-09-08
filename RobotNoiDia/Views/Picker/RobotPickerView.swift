@@ -11,6 +11,7 @@ public struct RobotPickerView: View {
     @State private var renameText: String = ""
     @State private var toastMessage: String? = nil
     @State private var showToast: Bool = false
+    @State private var showDebugJsonSheet: Bool = false
     
     public init() {}
     
@@ -343,13 +344,28 @@ public struct RobotPickerView: View {
                     }
                     .frame(maxWidth: .infinity)
                     
-                    // Tab 3: Đăng xuất
+                    // Tab 3: JSON Debug
+                    Button(action: {
+                        showDebugJsonSheet = true
+                    }) {
+                        VStack(spacing: 4) {
+                            Image(systemName: "curlybraces")
+                                .font(.system(size: 18))
+                                .foregroundColor(.gray)
+                            Text("JSON Debug")
+                                .font(.system(size: 11))
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    // Tab 4: Đăng xuất
                     Button(action: {
                         showLogoutAlert = true
                     }) {
                         VStack(spacing: 4) {
                             Image(systemName: "rectangle.portrait.and.arrow.right")
-                                .font(.system(size: 19))
+                                .font(.system(size: 18))
                                 .foregroundColor(.gray)
                             Text("Đăng xuất")
                                 .font(.system(size: 11))
@@ -400,6 +416,10 @@ public struct RobotPickerView: View {
                 },
                 secondaryButton: .cancel(Text("Hủy"))
             )
+        }
+        .sheet(isPresented: $showDebugJsonSheet) {
+            let json = EcovacsDeviceService.shared.getCachedRawDevicesJson()
+            DeviceDebugView(jsonText: (json.isEmpty || json == "[]") ? (currentRobot?.debugJsonFormatted ?? "[]") : json)
         }
     }
     

@@ -12,6 +12,7 @@ public struct SettingsTabView: View {
     @State private var showVideoManagerSheet: Bool = false
     @State private var showAboutRobotSheet: Bool = false
     @State private var showAboutStationSheet: Bool = false
+    @State private var showDebugJsonSheet: Bool = false
     
     public init(viewModel: RobotControlViewModel) {
         self.viewModel = viewModel
@@ -206,6 +207,17 @@ public struct SettingsTabView: View {
                                     )
                                 }
                             }
+                            
+                            Divider().padding(.leading, 50)
+                            
+                            Button(action: { showDebugJsonSheet = true }) {
+                                settingItemRow(
+                                    icon: "curlybraces",
+                                    iconColor: Color.orange,
+                                    title: "Dữ liệu JSON Thiết bị",
+                                    detail: "Xem và sao chép JSON debug cấu hình"
+                                )
+                            }
                         }
                         .background(Color.white)
                         .cornerRadius(14)
@@ -261,6 +273,9 @@ public struct SettingsTabView: View {
                     .navigationBarTitle("Phụ kiện & Bảo dưỡng", displayMode: .inline)
                     .navigationBarItems(trailing: Button("Xong") { showConsumablesSheet = false })
                 }
+            }
+            .sheet(isPresented: $showDebugJsonSheet) {
+                DeviceDebugView(jsonText: viewModel.device.debugJsonFormatted)
             }
             .alert("Trợ lý giọng nói YIKO", isPresented: $showYikoSheet) {
                 Button("Đóng", role: .cancel) {}
