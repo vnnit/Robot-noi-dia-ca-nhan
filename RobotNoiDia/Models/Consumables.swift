@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ConsumableType: String, CaseIterable, Identifiable {
+public enum ConsumableType: String, Codable, CaseIterable, Identifiable {
     case brush = "brush"
     case sideBrush = "sideBrush"
     case heap = "heap"
