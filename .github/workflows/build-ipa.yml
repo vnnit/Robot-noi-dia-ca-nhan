@@ -1,0 +1,97 @@
+name: Build & Release iOS IPA
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Phiên bản (ví dụ: v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+      release_notes:
+        description: 'Ghi chú thay đổi (Release Notes)'
+        required: false
+        default: 'Bản phát hành đầu tiên: Điều khiển trực tiếp Ecovacs Deebot không qua server, lưu session vĩnh viễn.'
+
+permissions:
+  contents: write
+
+jobs:
+  build-ipa:
+    name: Build RobotNoiDia.ipa
+    runs-on: macos-14
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app || sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Build Archive (.xcarchive)
+        run: |
+          xcodebuild -project RobotNoiDia.xcodeproj \
+            -scheme RobotNoiDia \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath ./build/RobotNoiDia.xcarchive \
+            archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r ./build/RobotNoiDia.xcarchive/Products/Applications/RobotNoiDia.app Payload/
+          zip -r -9 RobotNoiDia.ipa Payload
+          ls -lh RobotNoiDia.ipa
+
+      - name: Determine Version & Release Notes
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            echo "NOTES=${{ github.event.inputs.release_notes }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "NOTES=Bản phát hành ${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            SHORT_SHA=$(git rev-parse --short HEAD)
+            echo "VERSION=v1.0.0-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            echo "NOTES=Tự động build commit ${SHORT_SHA}: Kết nối trực tiếp Ecovacs Deebot, lưu session vĩnh viễn." >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload IPA as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RobotNoiDia-${{ steps.vars.outputs.VERSION }}
+          path: RobotNoiDia.ipa
+          retention-days: 14
+
+      - name: Create GitHub Release with IPA
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        with:
+          tag_name: ${{ steps.vars.outputs.VERSION }}
+          name: Robot Nội Địa - ${{ steps.vars.outputs.VERSION }}
+          body: |
+            ### 🤖 Phiên bản: ${{ steps.vars.outputs.VERSION }}
+            
+            **Ghi chú phiên bản:**
+            ${{ steps.vars.outputs.NOTES }}
+            
+            ---
+            ### 📲 Hướng dẫn cài đặt file `.ipa` vào iPhone:
+            1. Tải file **`RobotNoiDia.ipa`** bên dưới.
+            2. Sử dụng **Sideloadly** (PC/Mac) hoặc **AltStore** hoặc **TrollStore** để cài trực tiếp vào iPhone mà không cần App Store.
+            3. Mở app trên iPhone và trải nghiệm kết nối trực tiếp với Ecovacs Deebot!
+          files: RobotNoiDia.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
