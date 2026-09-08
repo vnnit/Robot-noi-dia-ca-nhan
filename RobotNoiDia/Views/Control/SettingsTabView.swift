@@ -25,20 +25,22 @@ public struct SettingsTabView: View {
                 
                 ScrollView {
                     VStack(spacing: 16) {
-                        // Nhóm 1: Trợ lý giọng nói YIKO
-                        VStack(spacing: 0) {
-                            Button(action: { showYikoSheet = true }) {
-                                settingItemRow(
-                                    icon: "mic.fill",
-                                    iconColor: Color(red: 0.09, green: 0.47, blue: 1.0),
-                                    title: "Trợ lý giọng nói YIKO",
-                                    detail: "Điều khiển bằng giọng nói OK YIKO"
-                                )
+                        // Nhóm 1: Trợ lý giọng nói YIKO (Chỉ hiện khi robot hỗ trợ)
+                        if viewModel.device.hasYiko {
+                            VStack(spacing: 0) {
+                                Button(action: { showYikoSheet = true }) {
+                                    settingItemRow(
+                                        icon: "mic.fill",
+                                        iconColor: Color(red: 0.09, green: 0.47, blue: 1.0),
+                                        title: "Trợ lý giọng nói YIKO",
+                                        detail: "Điều khiển bằng giọng nói OK YIKO"
+                                    )
+                                }
                             }
+                            .background(Color.white)
+                            .cornerRadius(14)
+                            .padding(.horizontal, 16)
                         }
-                        .background(Color.white)
-                        .cornerRadius(14)
-                        .padding(.horizontal, 16)
                         
                         // Nhóm 2: Nhật ký & Phụ kiện
                         VStack(spacing: 0) {
@@ -68,27 +70,29 @@ public struct SettingsTabView: View {
                         
                         // Nhóm 3: Trí tuệ AI, Camera & Chế độ không làm phiền
                         VStack(spacing: 0) {
-                            Button(action: { showAiviSheet = true }) {
-                                settingItemRow(
-                                    icon: "eye.fill",
-                                    iconColor: Color.purple,
-                                    title: "Cài đặt thông minh AIVI",
-                                    detail: "Nhận diện vật cản & trí tuệ nhân tạo 3D"
-                                )
+                            if viewModel.device.hasCamera {
+                                Button(action: { showAiviSheet = true }) {
+                                    settingItemRow(
+                                        icon: "eye.fill",
+                                        iconColor: Color.purple,
+                                        title: "Cài đặt thông minh AIVI",
+                                        detail: "Nhận diện vật cản & trí tuệ nhân tạo 3D"
+                                    )
+                                }
+                                
+                                Divider().padding(.leading, 50)
+                                
+                                Button(action: { showVideoManagerSheet = true }) {
+                                    settingItemRow(
+                                        icon: "video.fill",
+                                        iconColor: Color.blue,
+                                        title: "Trình quản lý Video",
+                                        detail: "Tuần tra an ninh và truyền hình trực tiếp"
+                                    )
+                                }
+                                
+                                Divider().padding(.leading, 50)
                             }
-                            
-                            Divider().padding(.leading, 50)
-                            
-                            Button(action: { showVideoManagerSheet = true }) {
-                                settingItemRow(
-                                    icon: "video.fill",
-                                    iconColor: Color.blue,
-                                    title: "Trình quản lý Video",
-                                    detail: "Tuần tra an ninh và truyền hình trực tiếp"
-                                )
-                            }
-                            
-                            Divider().padding(.leading, 50)
                             
                             // Toggle Chế độ Không làm phiền (DND)
                             HStack(spacing: 14) {
@@ -190,15 +194,17 @@ public struct SettingsTabView: View {
                                 )
                             }
                             
-                            Divider().padding(.leading, 50)
-                            
-                            Button(action: { showAboutStationSheet = true }) {
-                                settingItemRow(
-                                    icon: "powerplug.fill",
-                                    iconColor: Color.green,
-                                    title: "Thông tin Trạm sạc OMNI",
-                                    detail: "Trạm sạc tự động sấy khí nóng"
-                                )
+                            if viewModel.device.hasOmniStation {
+                                Divider().padding(.leading, 50)
+                                
+                                Button(action: { showAboutStationSheet = true }) {
+                                    settingItemRow(
+                                        icon: "powerplug.fill",
+                                        iconColor: Color.green,
+                                        title: "Thông tin Trạm sạc OMNI",
+                                        detail: "Trạm sạc tự động sấy khí nóng"
+                                    )
+                                }
                             }
                         }
                         .background(Color.white)

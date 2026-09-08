@@ -59,6 +59,32 @@ public struct DeviceModel: Identifiable, Codable, Hashable {
         cleanState == "clean"
     }
     
+    // Dynamic Model Capabilities (Tự động nhận diện tính năng theo từng dòng robot)
+    public var hasCamera: Bool {
+        let text = (friendlyModelName + " " + model + " " + deviceClass).uppercased()
+        return text.contains("AIVI") || text.contains("T10") || text.contains("X1") || text.contains("X2") || text.contains("T20") || text.contains("T30")
+    }
+    
+    public var has3DMap: Bool {
+        let text = (friendlyModelName + " " + model + " " + deviceClass).uppercased()
+        return text.contains("T9") || text.contains("T10") || text.contains("X1") || text.contains("X2") || text.contains("T20") || text.contains("T30")
+    }
+    
+    public var hasYiko: Bool {
+        let text = (friendlyModelName + " " + model + " " + deviceClass).uppercased()
+        return text.contains("T10") || text.contains("X1") || text.contains("X2") || text.contains("T20") || text.contains("T30")
+    }
+    
+    public var hasOmniStation: Bool {
+        let text = (friendlyModelName + " " + model + " " + deviceClass).uppercased()
+        return text.contains("TURBO") || text.contains("OMNI") || text.contains("PRO") || text.contains("PLUS")
+    }
+    
+    public var hasEdgeDeepCleaning: Bool {
+        let text = (friendlyModelName + " " + model + " " + deviceClass).uppercased()
+        return text.contains("T10") || text.contains("T20") || text.contains("T30") || text.contains("X1") || text.contains("X2")
+    }
+    
     public init(
         did: String,
         name: String,
