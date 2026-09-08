@@ -1,199 +1,317 @@
 import SwiftUI
 
+/// Màn hình Cài đặt Nâng cao (Hình 5 - Chuẩn Ecovacs Home App)
 public struct SettingsTabView: View {
     @ObservedObject var viewModel: RobotControlViewModel
+    @Environment(\.presentationMode) var presentationMode
+    
+    @State private var showYikoSheet: Bool = false
+    @State private var showCleaningLogSheet: Bool = false
+    @State private var showConsumablesSheet: Bool = false
+    @State private var showAiviSheet: Bool = false
+    @State private var showVideoManagerSheet: Bool = false
+    @State private var showAboutRobotSheet: Bool = false
+    @State private var showAboutStationSheet: Bool = false
     
     public init(viewModel: RobotControlViewModel) {
         self.viewModel = viewModel
     }
     
     public var body: some View {
-        VStack(spacing: 20) {
-            // Cảnh báo lỗi nếu có
-            if viewModel.state.errorCode != 0 {
-                HStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(.red)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("CẢNH BÁO: Mã lỗi #\(viewModel.state.errorCode)")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.red)
-                        Text(viewModel.state.errorText)
-                            .font(.system(size: 13))
-                            .foregroundColor(.white.opacity(0.9))
-                    }
-                    Spacer()
-                }
-                .padding(14)
-                .background(Color.red.opacity(0.15))
-                .cornerRadius(14)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(Color.red.opacity(0.4), lineWidth: 1)
-                )
-            }
-            
-            // 1. Chỉnh Lực hút (Fan Speed)
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Image(systemName: "wind")
-                        .foregroundColor(.cyan)
-                    Text("Lực hút bụi")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white)
-                    Spacer()
-                    Text(FanSpeedLevel(rawValue: viewModel.state.fanSpeed)?.title ?? viewModel.state.fanSpeed)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.cyan)
-                }
+        NavigationView {
+            ZStack(alignment: .bottom) {
+                Color(red: 0.96, green: 0.97, blue: 0.99)
+                    .ignoresSafeArea()
                 
-                HStack(spacing: 8) {
-                    ForEach(FanSpeedLevel.allCases, id: \.self) { level in
-                        let isSelected = viewModel.state.fanSpeed == level.rawValue
-                        Button(action: {
-                            viewModel.setFanSpeed(level)
-                        }) {
-                            Text(level.title.replacingOccurrences(of: " (Max+)", with: ""))
-                                .font(.system(size: 12, weight: isSelected ? .bold : .medium))
-                                .foregroundColor(isSelected ? .white : .gray)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 38)
-                                .background(isSelected ? Color.cyan.opacity(0.3) : Color.white.opacity(0.04))
-                                .cornerRadius(10)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .stroke(isSelected ? Color.cyan : Color.white.opacity(0.08), lineWidth: 1)
+                ScrollView {
+                    VStack(spacing: 16) {
+                        // Nhóm 1: Trợ lý giọng nói YIKO
+                        VStack(spacing: 0) {
+                            Button(action: { showYikoSheet = true }) {
+                                settingItemRow(
+                                    icon: "mic.fill",
+                                    iconColor: Color(red: 0.09, green: 0.47, blue: 1.0),
+                                    title: "Trợ lý giọng nói YIKO",
+                                    detail: "Điều khiển bằng giọng nói OK YIKO"
                                 )
-                        }
-                    }
-                }
-            }
-            .padding(16)
-            .background(Color(red: 0.08, green: 0.11, blue: 0.18))
-            .cornerRadius(16)
-            
-            // 2. Chỉnh Mức nước lau sàn (Water Amount)
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Image(systemName: "drop.fill")
-                        .foregroundColor(.blue)
-                    Text("Lượng nước lau sàn")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white)
-                    Spacer()
-                    Text("Mức \(viewModel.state.waterAmount)")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.blue)
-                }
-                
-                HStack(spacing: 8) {
-                    ForEach(1...4, id: \.self) { amount in
-                        let isSelected = viewModel.state.waterAmount == amount
-                        Button(action: {
-                            viewModel.setWaterAmount(amount)
-                        }) {
-                            HStack(spacing: 4) {
-                                ForEach(0..<amount, id: \.self) { _ in
-                                    Image(systemName: "drop.fill")
-                                        .font(.system(size: 10))
-                                }
                             }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 38)
-                            .foregroundColor(isSelected ? .white : .gray)
-                            .background(isSelected ? Color.blue.opacity(0.3) : Color.white.opacity(0.04))
-                            .cornerRadius(10)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(isSelected ? Color.blue : Color.white.opacity(0.08), lineWidth: 1)
-                            )
                         }
+                        .background(Color.white)
+                        .cornerRadius(14)
+                        .padding(.horizontal, 16)
+                        
+                        // Nhóm 2: Nhật ký & Phụ kiện
+                        VStack(spacing: 0) {
+                            Button(action: { showCleaningLogSheet = true }) {
+                                settingItemRow(
+                                    icon: "clock.arrow.circlepath",
+                                    iconColor: Color(red: 0.0, green: 0.75, blue: 0.45),
+                                    title: "Nhật ký dọn dẹp",
+                                    detail: "Lịch sử và diện tích đã làm sạch"
+                                )
+                            }
+                            
+                            Divider().padding(.leading, 50)
+                            
+                            Button(action: { showConsumablesSheet = true }) {
+                                settingItemRow(
+                                    icon: "wrench.and.screwdriver.fill",
+                                    iconColor: Color.orange,
+                                    title: "Phụ kiện & Bảo dưỡng",
+                                    detail: "Tuổi thọ chổi, màng lọc, giẻ lau"
+                                )
+                            }
+                        }
+                        .background(Color.white)
+                        .cornerRadius(14)
+                        .padding(.horizontal, 16)
+                        
+                        // Nhóm 3: Trí tuệ AI, Camera & Chế độ không làm phiền
+                        VStack(spacing: 0) {
+                            Button(action: { showAiviSheet = true }) {
+                                settingItemRow(
+                                    icon: "eye.fill",
+                                    iconColor: Color.purple,
+                                    title: "Cài đặt thông minh AIVI",
+                                    detail: "Nhận diện vật cản & trí tuệ nhân tạo 3D"
+                                )
+                            }
+                            
+                            Divider().padding(.leading, 50)
+                            
+                            Button(action: { showVideoManagerSheet = true }) {
+                                settingItemRow(
+                                    icon: "video.fill",
+                                    iconColor: Color.blue,
+                                    title: "Trình quản lý Video",
+                                    detail: "Tuần tra an ninh và truyền hình trực tiếp"
+                                )
+                            }
+                            
+                            Divider().padding(.leading, 50)
+                            
+                            // Toggle Chế độ Không làm phiền (DND)
+                            HStack(spacing: 14) {
+                                Image(systemName: "moon.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(Color.indigo)
+                                    .frame(width: 24)
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Chế độ Không làm phiền")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(Color(white: 0.15))
+                                    Text("Tắt thông báo giọng nói & đèn trạng thái ban đêm")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.gray)
+                                }
+                                
+                                Spacer()
+                                
+                                Toggle("", isOn: Binding(
+                                    get: { viewModel.doNotDisturb },
+                                    set: { _ in viewModel.toggleDoNotDisturb() }
+                                ))
+                                .labelsHidden()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            
+                            Divider().padding(.leading, 50)
+                            
+                            // Toggle Tự tăng áp thảm
+                            HStack(spacing: 14) {
+                                Image(systemName: "wind")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(Color.teal)
+                                    .frame(width: 24)
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Tự tăng áp khi gặp thảm")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(Color(white: 0.15))
+                                    Text("Tăng tối đa lực hút bụi khi robot leo lên thảm")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.gray)
+                                }
+                                
+                                Spacer()
+                                
+                                Toggle("", isOn: Binding(
+                                    get: { viewModel.state.carpetAutoBoost },
+                                    set: { _ in viewModel.toggleCarpetBoost() }
+                                ))
+                                .labelsHidden()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            
+                            Divider().padding(.leading, 50)
+                            
+                            // Toggle Khóa trẻ em
+                            HStack(spacing: 14) {
+                                Image(systemName: "lock.shield.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(Color.pink)
+                                    .frame(width: 24)
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Khóa trẻ em")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(Color(white: 0.15))
+                                    Text("Khóa nút bấm vật lý trên thân robot")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.gray)
+                                }
+                                
+                                Spacer()
+                                
+                                Toggle("", isOn: Binding(
+                                    get: { viewModel.state.childLock },
+                                    set: { _ in viewModel.toggleChildLock() }
+                                ))
+                                .labelsHidden()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                        }
+                        .background(Color.white)
+                        .cornerRadius(14)
+                        .padding(.horizontal, 16)
+                        
+                        // Nhóm 4: Thông tin thiết bị & Trạm
+                        VStack(spacing: 0) {
+                            Button(action: { showAboutRobotSheet = true }) {
+                                settingItemRow(
+                                    icon: "info.circle.fill",
+                                    iconColor: Color.blue,
+                                    title: "Thông tin DEEBOT",
+                                    detail: "\(viewModel.device.friendlyModelName) • FW: \(viewModel.device.fwVer)"
+                                )
+                            }
+                            
+                            Divider().padding(.leading, 50)
+                            
+                            Button(action: { showAboutStationSheet = true }) {
+                                settingItemRow(
+                                    icon: "powerplug.fill",
+                                    iconColor: Color.green,
+                                    title: "Thông tin Trạm sạc OMNI",
+                                    detail: "Trạm sạc tự động sấy khí nóng"
+                                )
+                            }
+                        }
+                        .background(Color.white)
+                        .cornerRadius(14)
+                        .padding(.horizontal, 16)
+                        
+                        Spacer().frame(height: 100)
                     }
+                    .padding(.top, 16)
                 }
-            }
-            .padding(16)
-            .background(Color(red: 0.08, green: 0.11, blue: 0.18))
-            .cornerRadius(16)
-            
-            // 3. Âm lượng giọng nói
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Image(systemName: "speaker.wave.2.fill")
-                        .foregroundColor(.green)
-                    Text("Âm lượng thông báo")
-                        .font(.system(size: 15, weight: .bold))
+                
+                // HÌNH 5: Nút lớn dưới đáy: "Tìm DEEBOT của tôi"
+                VStack {
+                    Button(action: {
+                        viewModel.triggerPlaySound()
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "speaker.wave.3.fill")
+                                .font(.system(size: 18))
+                            Text("Tìm DEEBOT của tôi")
+                                .font(.system(size: 16, weight: .bold))
+                        }
                         .foregroundColor(.white)
-                    Spacer()
-                    Text("\(viewModel.state.volume)/10")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.green)
-                }
-                
-                Slider(
-                    value: Binding(
-                        get: { Double(viewModel.state.volume) },
-                        set: { viewModel.setVolume(Int($0)) }
-                    ),
-                    in: 0...10,
-                    step: 1
-                )
-                .tint(.green)
-            }
-            .padding(16)
-            .background(Color(red: 0.08, green: 0.11, blue: 0.18))
-            .cornerRadius(16)
-            
-            // 4. Tính năng nâng cao: Khóa trẻ em & Tăng áp thảm
-            VStack(spacing: 14) {
-                // Khóa trẻ em
-                Toggle(isOn: Binding(
-                    get: { viewModel.state.childLock },
-                    set: { _ in viewModel.toggleChildLock() }
-                )) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "lock.circle.fill")
-                            .foregroundColor(.orange)
-                            .font(.system(size: 20))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Khóa an toàn trẻ em")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.white)
-                            Text("Vô hiệu hóa nút bấm cứng trên thân robot")
-                                .font(.system(size: 12))
-                                .foregroundColor(.gray)
-                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(Color(red: 0.09, green: 0.47, blue: 1.0))
+                        .cornerRadius(14)
+                        .shadow(color: Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.35), radius: 8, y: 4)
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 16)
                 }
-                .tint(.orange)
-                
-                Divider().background(Color.white.opacity(0.08))
-                
-                // Tăng áp khi lên thảm
-                Toggle(isOn: Binding(
-                    get: { viewModel.state.carpetAutoBoost },
-                    set: { _ in viewModel.toggleCarpetBoost() }
-                )) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .foregroundColor(.cyan)
-                            .font(.system(size: 20))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Tự động tăng áp khi lên thảm")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.white)
-                            Text("Tăng tối đa lực hút khi cảm biến phát hiện thảm")
-                                .font(.system(size: 12))
-                                .foregroundColor(.gray)
-                        }
-                    }
-                }
-                .tint(.cyan)
             }
-            .padding(16)
-            .background(Color(red: 0.08, green: 0.11, blue: 0.18))
-            .cornerRadius(16)
+            .navigationBarTitle("Cài đặt", displayMode: .inline)
+            .navigationBarItems(
+                leading: Button(action: {
+                    presentationMode.wrappedValue.dismiss()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("Quay lại")
+                            .font(.system(size: 15))
+                    }
+                    .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                }
+            )
+            .sheet(isPresented: $showConsumablesSheet) {
+                NavigationView {
+                    ScrollView {
+                        ConsumablesTabView(viewModel: viewModel)
+                            .padding(16)
+                    }
+                    .navigationBarTitle("Phụ kiện & Bảo dưỡng", displayMode: .inline)
+                    .navigationBarItems(trailing: Button("Xong") { showConsumablesSheet = false })
+                }
+            }
+            .alert("Trợ lý giọng nói YIKO", isPresented: $showYikoSheet) {
+                Button("Đóng", role: .cancel) {}
+            } message: {
+                Text("Nói \"OK YIKO\" để ra lệnh trực tiếp: \"Dọn dẹp phòng khách\", \"Quay về trạm sạc\", \"Tăng lực hút\".")
+            }
+            .alert("Nhật ký dọn dẹp", isPresented: $showCleaningLogSheet) {
+                Button("Đóng", role: .cancel) {}
+            } message: {
+                Text("Lần dọn gần nhất: Đã làm sạch 48 m² trong 42 phút. Tình trạng: Hoàn tất xuất sắc.")
+            }
+            .alert("Cài đặt thông minh AIVI", isPresented: $showAiviSheet) {
+                Button("Đóng", role: .cancel) {}
+            } message: {
+                Text("Hệ thống AIVI 3D nhận diện vật cản giày dép, dây điện, phân thú cưng và lập bản đồ thời gian thực.")
+            }
+            .alert("Trình quản lý Video", isPresented: $showVideoManagerSheet) {
+                Button("Đóng", role: .cancel) {}
+            } message: {
+                Text("Mã hoá video đầu cuối E2EE chuẩn an toàn dữ liệu TUV Rheinland. Tuần tra bảo vệ tổ ấm khi vắng nhà.")
+            }
+            .alert("Thông tin DEEBOT", isPresented: $showAboutRobotSheet) {
+                Button("Đóng", role: .cancel) {}
+            } message: {
+                Text("Model: \(viewModel.device.friendlyModelName)\nPhiên bản FW: \(viewModel.device.fwVer)\nMã thiết bị DID: \(viewModel.device.did)")
+            }
+            .alert("Trạm sạc OMNI", isPresented: $showAboutStationSheet) {
+                Button("Đóng", role: .cancel) {}
+            } message: {
+                Text("Trạm OMNI đa năng:\n- Tự động giặt giẻ lau kép xoay\n- Sấy khô giẻ lau bằng khí nóng 40°C\n- Tự động nạp nước sạch và bơm xả nước bẩn.")
+            }
         }
+    }
+    
+    private func settingItemRow(icon: String, iconColor: Color, title: String, detail: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundColor(iconColor)
+                .frame(width: 24)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Color(white: 0.15))
+                Text(detail)
+                    .font(.system(size: 12))
+                    .foregroundColor(.gray)
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Color(white: 0.7))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
     }
 }

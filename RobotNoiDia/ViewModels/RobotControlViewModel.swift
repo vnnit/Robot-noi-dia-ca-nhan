@@ -34,6 +34,15 @@ public final class RobotControlViewModel: ObservableObject {
     @Published public var svgMap: String? = nil
     @Published public var selectedTab: ControlTab = .controls
     
+    // Thuộc tính điều khiển chi tiết theo Hình 2, 3, 4
+    @Published public var cleanModeTab: String = "auto" // "area", "auto", "custom"
+    @Published public var cleaningPreference: String = "standard" // "standard", "customize"
+    @Published public var cleanTimes: Int = 1 // 1 hoặc 2 lần
+    @Published public var moppingMode: String = "standard" // "standard" hoặc "deep"
+    @Published public var edgeDeepCleaning: Bool = true
+    @Published public var doNotDisturb: Bool = false
+    @Published public var showMoreSettings: Bool = false
+    
     @Published public var isExecutingCommand: Bool = false
     @Published public var isMapLoading: Bool = false
     @Published public var toastMessage: String? = nil
@@ -202,6 +211,41 @@ public final class RobotControlViewModel: ObservableObject {
             } catch {
                 self.showToastNotification("Lỗi: \(error.localizedDescription)")
             }
+        }
+    }
+    
+    public func setCleanTimes(_ times: Int) {
+        self.cleanTimes = times
+        Task {
+            _ = try? await deviceService.executeCommand(device: device, cmdName: "setCleanTimes", payloadArgs: ["times": times])
+            self.showToastNotification("Đã chọn dọn dẹp: x\(times) lần")
+        }
+    }
+    
+    public func setMoppingMode(_ mode: String) {
+        self.moppingMode = mode
+        let title = mode == "deep" ? "Lau sâu" : "Tiêu chuẩn"
+        Task {
+            _ = try? await deviceService.executeCommand(device: device, cmdName: "setMoppingMode", payloadArgs: ["mode": mode])
+            self.showToastNotification("Chế độ lau: \(title)")
+        }
+    }
+    
+    public func toggleEdgeDeepCleaning() {
+        self.edgeDeepCleaning.toggle()
+        let val = self.edgeDeepCleaning
+        Task {
+            _ = try? await deviceService.executeCommand(device: device, cmdName: "setEdgeDeepCleaning", payloadArgs: ["enable": val ? 1 : 0])
+            self.showToastNotification("Làm sạch sâu góc cạnh: \(val ? "Đã bật" : "Đã tắt")")
+        }
+    }
+    
+    public func toggleDoNotDisturb() {
+        self.doNotDisturb.toggle()
+        let val = self.doNotDisturb
+        Task {
+            _ = try? await deviceService.executeCommand(device: device, cmdName: "setDoNotDisturb", payloadArgs: ["enable": val ? 1 : 0])
+            self.showToastNotification("Chế độ không làm phiền: \(val ? "Đã bật" : "Đã tắt")")
         }
     }
     

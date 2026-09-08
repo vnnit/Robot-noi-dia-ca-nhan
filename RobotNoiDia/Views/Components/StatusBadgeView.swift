@@ -151,3 +151,157 @@ public struct RobotAvatarView: View {
     }
 }
 
+/// Mô phỏng hình ảnh Robot DEEBOT cùng Trạm Sạc / Dock OMNI như ảnh thực tế (Hình 1)
+public struct RobotStationHeroView: View {
+    public let modelName: String
+    public let isCleaning: Bool
+    
+    public init(modelName: String = "DEEBOT T10 TURBO", isCleaning: Bool = false) {
+        self.modelName = modelName
+        self.isCleaning = isCleaning
+    }
+    
+    public var body: some View {
+        ZStack {
+            // Bóng đổ sàn nhà (Floor Shadow)
+            Ellipse()
+                .fill(Color.black.opacity(0.12))
+                .frame(width: 290, height: 42)
+                .blur(radius: 12)
+                .offset(y: 115)
+            
+            // 1. Trạm sạc đa năng (OMNI / TURBO Dock Station)
+            ZStack(alignment: .top) {
+                // Thân trạm chính
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(white: 0.98), Color(white: 0.92)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 175, height: 215)
+                    .shadow(color: Color.black.opacity(0.08), radius: 10, x: -4, y: 6)
+                
+                // Nắp bình nước sạch/bẩn phía trên
+                VStack(spacing: 0) {
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(Color(white: 0.94))
+                        .frame(width: 175, height: 44)
+                        .overlay(
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.2))
+                                .frame(height: 1),
+                            alignment: .bottom
+                        )
+                    
+                    Spacer()
+                    
+                    // Khoang đỗ robot và giẻ lau ở đáy trạm
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color(white: 0.2))
+                            .frame(width: 155, height: 70)
+                        
+                        // Chi tiết bên trong khoang sạc
+                        HStack(spacing: 12) {
+                            Rectangle()
+                                .fill(Color(white: 0.35))
+                                .frame(width: 32, height: 18)
+                                .cornerRadius(4)
+                            Rectangle()
+                                .fill(Color(white: 0.15))
+                                .frame(width: 44, height: 14)
+                                .cornerRadius(2)
+                        }
+                    }
+                    .padding(.bottom, 6)
+                }
+                .frame(width: 175, height: 215)
+                
+                // Logo Ecovacs trên trạm sạc
+                Circle()
+                    .stroke(Color.gray.opacity(0.35), lineWidth: 1.5)
+                    .frame(width: 16, height: 16)
+                    .overlay(
+                        Text("E")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.gray)
+                    )
+                    .padding(.top, 65)
+            }
+            .offset(x: -38, y: -10)
+            
+            // 2. Robot Hút Bụi DEEBOT màu trắng (Đỗ phía trước trạm)
+            ZStack {
+                // Bóng đổ của robot
+                Circle()
+                    .fill(Color.black.opacity(0.2))
+                    .frame(width: 155, height: 155)
+                    .blur(radius: 6)
+                    .offset(x: 4, y: 8)
+                
+                // Thân tròn robot (Chassis trắng cao cấp)
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color.white, Color(white: 0.93)],
+                            center: .center,
+                            startRadius: 10,
+                            endRadius: 80
+                        )
+                    )
+                    .frame(width: 155, height: 155)
+                    .overlay(
+                        Circle()
+                            .stroke(isCleaning ? Color.cyan : Color(white: 0.85), lineWidth: isCleaning ? 2.5 : 1.5)
+                    )
+                    .shadow(color: Color.black.opacity(0.12), radius: 8, x: 2, y: 4)
+                
+                // Cản trước và khe cảm biến AIVI
+                Circle()
+                    .trim(from: 0.65, to: 0.85)
+                    .stroke(Color(white: 0.75), lineWidth: 3)
+                    .frame(width: 142, height: 142)
+                    .rotationEffect(.degrees(40))
+                
+                // Tháp cảm biến Laser LiDAR (D-ToF LDS Tower)
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white, Color(white: 0.88)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 54, height: 54)
+                    .overlay(
+                        Circle()
+                            .stroke(Color(white: 0.8), lineWidth: 1.2)
+                    )
+                    .shadow(color: Color.black.opacity(0.1), radius: 4, x: 1, y: 2)
+                    .overlay(
+                        Circle()
+                            .stroke(isCleaning ? Color.cyan : Color.gray.opacity(0.4), lineWidth: 1.5)
+                            .frame(width: 20, height: 20)
+                            .overlay(
+                                Text("E")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(isCleaning ? .cyan : .gray)
+                            )
+                    )
+                
+                // Logo DEEBOT in chìm
+                Text("DEEBOT")
+                    .font(.system(size: 7, weight: .bold, design: .rounded))
+                    .foregroundColor(Color(white: 0.6))
+                    .offset(y: 48)
+            }
+            .offset(x: 52, y: 35)
+        }
+        .frame(height: 270)
+    }
+}
+
+
