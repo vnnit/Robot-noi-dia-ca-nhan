@@ -118,6 +118,7 @@ public struct RobotCardView: View {
                     .stroke(isCleaning ? Color.cyan : Color.white.opacity(0.08), lineWidth: isCleaning ? 2 : 1)
                     .shadow(color: isCleaning ? Color.cyan.opacity(0.5) : Color.clear, radius: 8)
             )
+        }
         .buttonStyle(PlainButtonStyle())
         .alert("Đổi tên Robot", isPresented: $showRenameAlert) {
             TextField("Nhập tên mới", text: $newNameText)

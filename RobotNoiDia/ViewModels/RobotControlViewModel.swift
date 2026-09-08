@@ -52,7 +52,7 @@ public final class RobotControlViewModel: ObservableObject {
         device.saveCustomName(trimmed)
         let updated = device
         self.device = updated
-        showToastMessage("Đã đổi tên robot thành: \(device.displayName)")
+        showToastNotification("Đã đổi tên robot thành: \(device.displayName)")
     }
     
     public func onAppear() {
