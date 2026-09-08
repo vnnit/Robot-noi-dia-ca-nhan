@@ -14,66 +14,109 @@ public final class EcovacsDeviceService {
         self.session = URLSession(configuration: config)
     }
     
-    // MARK: - 1. Lấy danh sách Robot từ Ecovacs Cloud
-    public func fetchDevices() async throws -> [DeviceModel] {
-        let creds = try await authService.ensureValidToken()
-        let portalUrl = Constants.portalUrl(for: keychain.country)
-        guard let url = URL(string: portalUrl + "/api/users/user.do") else {
-            throw NSError(domain: "EcovacsDevice", code: -1, userInfo: [NSLocalizedDescriptionKey: "Sai URL"])
-        }
-        
-        let body: [String: Any] = [
-            "userid": creds.userId,
-            "todo": "GetDeviceList",
-            "auth": [
-                "with": "users",
-                "userid": creds.userId,
-                "realm": Constants.realm,
-                "token": creds.token,
-                "resource": creds.deviceId
-            ]
-        ]
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        let (data, _) = try await session.data(for: request)
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let devicesRaw = json["devices"] as? [[String: Any]] else {
+    private let cacheKey = "cached_devices_list_v1"
+    
+    // MARK: - Quản lý Cache Cục bộ (Tải tức thì 0ms)
+    public func getCachedDevices() -> [DeviceModel] {
+        guard let data = UserDefaults.standard.data(forKey: cacheKey),
+              let list = try? JSONDecoder().decode([DeviceModel].self, from: data) else {
             return []
         }
-        
-        var list: [DeviceModel] = []
-        for d in devicesRaw {
-            guard let did = d["did"] as? String, !did.isEmpty else { continue }
-            let name = (d["deviceName"] as? String) ?? (d["name"] as? String) ?? "DEEBOT"
-            let nick = (d["nick"] as? String)
-            let model = (d["model"] as? String) ?? (d["product_category"] as? String) ?? "DEEBOT"
-            let devClass = (d["class"] as? String) ?? "yna5xi"
-            let company = (d["company"] as? String) ?? "eco-ng"
-            let status = (d["status"] as? Int) ?? 1
-            let icon = d["icon"] as? String
-            let fwVer = (d["version"] as? String) ?? "v1.9.7"
-            let res = (d["resource"] as? String) ?? "pwMl"
-            
-            let modelObj = DeviceModel(
-                did: did,
-                name: name,
-                nick: nick,
-                model: model,
-                deviceClass: devClass,
-                company: company,
-                status: status,
-                icon: icon,
-                fwVer: fwVer,
-                resource: res
-            )
-            list.append(modelObj)
-        }
-        
         return list
+    }
+    
+    public func saveCachedDevices(_ devices: [DeviceModel]) {
+        guard !devices.isEmpty else { return }
+        if let data = try? JSONEncoder().encode(devices) {
+            UserDefaults.standard.set(data, forKey: cacheKey)
+        }
+    }
+    
+    public func clearCache() {
+        UserDefaults.standard.removeObject(forKey: cacheKey)
+    }
+    
+    // MARK: - 1. Lấy danh sách Robot từ Ecovacs Cloud
+    public func fetchDevices() async throws -> [DeviceModel] {
+        do {
+            let creds = try await authService.ensureValidToken()
+            let portalUrl = Constants.portalUrl(for: keychain.country)
+            guard let url = URL(string: portalUrl + "/api/users/user.do") else {
+                throw NSError(domain: "EcovacsDevice", code: -1, userInfo: [NSLocalizedDescriptionKey: "Sai URL"])
+            }
+            
+            let body: [String: Any] = [
+                "userid": creds.userId,
+                "todo": "GetDeviceList",
+                "auth": [
+                    "with": "users",
+                    "userid": creds.userId,
+                    "realm": Constants.realm,
+                    "token": creds.token,
+                    "resource": creds.deviceId
+                ]
+            ]
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            
+            let (data, _) = try await session.data(for: request)
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let devicesRaw = json["devices"] as? [[String: Any]] else {
+                let cached = getCachedDevices()
+                return cached
+            }
+            
+            var list: [DeviceModel] = []
+            let existingCache = getCachedDevices()
+            
+            for d in devicesRaw {
+                guard let did = d["did"] as? String, !did.isEmpty else { continue }
+                let name = (d["deviceName"] as? String) ?? (d["name"] as? String) ?? "DEEBOT"
+                let nick = (d["nick"] as? String)
+                let model = (d["model"] as? String) ?? (d["product_category"] as? String) ?? "DEEBOT"
+                let devClass = (d["class"] as? String) ?? "yna5xi"
+                let company = (d["company"] as? String) ?? "eco-ng"
+                let status = (d["status"] as? Int) ?? 1
+                let icon = d["icon"] as? String
+                let fwVer = (d["version"] as? String) ?? "v1.9.7"
+                let res = (d["resource"] as? String) ?? "pwMl"
+                
+                // Giữ lại trạng thái pin/hoạt động đã lưu trong cache trước đó
+                let cachedDev = existingCache.first(where: { $0.did == did })
+                
+                let modelObj = DeviceModel(
+                    did: did,
+                    name: name,
+                    nick: nick,
+                    model: model,
+                    deviceClass: devClass,
+                    company: company,
+                    status: status,
+                    icon: icon,
+                    fwVer: fwVer,
+                    resource: res,
+                    battery: cachedDev?.battery,
+                    isCharging: cachedDev?.isCharging,
+                    cleanState: cachedDev?.cleanState,
+                    cleanStateText: cachedDev?.cleanStateText
+                )
+                list.append(modelObj)
+            }
+            
+            if !list.isEmpty {
+                saveCachedDevices(list)
+            }
+            return list
+        } catch {
+            let cached = getCachedDevices()
+            if !cached.isEmpty {
+                return cached
+            }
+            throw error
+        }
     }
     
     // MARK: - 2. Gửi lệnh chung (Direct CloudCtl REST)

@@ -44,6 +44,8 @@ public final class LoginViewModel: ObservableObject {
                     country: country,
                     isHash: false
                 )
+                // Nạp và lưu cache trước danh sách robot để mở PickerView tức thì không có độ trễ
+                _ = try? await EcovacsDeviceService.shared.fetchDevices()
                 self.isLoading = false
                 onSuccess()
             } catch {

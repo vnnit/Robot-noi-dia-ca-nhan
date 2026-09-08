@@ -11,9 +11,14 @@ public final class RobotPickerViewModel: ObservableObject {
     private let deviceService = EcovacsDeviceService.shared
     private var refreshTimer: Timer?
     
-    public init() {}
+    public init() {
+        // Tải tức thời danh sách robot từ cache cục bộ (0ms, không chờ mạng)
+        let cached = deviceService.getCachedDevices()
+        self.devices = cached
+        self.isLoading = cached.isEmpty
+    }
     
-    public func loadDevices(showLoading: Bool = true) {
+    public func loadDevices(showLoading: Bool = false) {
         if showLoading && devices.isEmpty {
             isLoading = true
         }
@@ -23,7 +28,7 @@ public final class RobotPickerViewModel: ObservableObject {
             do {
                 let fetched = try await deviceService.fetchDevices()
                 
-                // Hiển thị danh sách robot ngay lập tức (siêu tốc < 0.3s)
+                // Hiển thị danh sách robot
                 self.devices = fetched
                 self.isLoading = false
                 self.isRefreshing = false
@@ -47,12 +52,17 @@ public final class RobotPickerViewModel: ObservableObject {
                     }
                 }
                 
+                // Lưu lại cache gồm cả trạng thái pin
+                self.deviceService.saveCachedDevices(self.devices)
+                
                 // Bắt đầu chu kỳ làm mới thẻ định kỳ 8 giây
                 startAutoPolling()
             } catch {
                 self.isLoading = false
                 self.isRefreshing = false
-                self.errorMessage = error.localizedDescription
+                if self.devices.isEmpty {
+                    self.errorMessage = error.localizedDescription
+                }
             }
         }
     }
@@ -64,6 +74,7 @@ public final class RobotPickerViewModel: ObservableObject {
             devices[idx].saveCustomName(trimmed)
             let updated = devices[idx]
             devices[idx] = updated
+            deviceService.saveCachedDevices(devices)
         }
     }
     
@@ -81,6 +92,7 @@ public final class RobotPickerViewModel: ObservableObject {
                         self.devices[index].cleanStateText = st.cleanStateText
                     }
                 }
+                self.deviceService.saveCachedDevices(self.devices)
             }
         }
     }
