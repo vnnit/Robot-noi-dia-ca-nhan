@@ -16,6 +16,9 @@ public final class RobotPickerViewModel: ObservableObject {
         let cached = deviceService.getCachedDevices()
         self.devices = cached
         self.isLoading = cached.isEmpty
+        if !cached.isEmpty {
+            RobotImageCacheManager.shared.preloadImages(for: cached)
+        }
     }
     
     public func loadDevices(showLoading: Bool = false, forceRefreshAuth: Bool = false) {
@@ -28,10 +31,11 @@ public final class RobotPickerViewModel: ObservableObject {
             do {
                 let fetched = try await deviceService.fetchDevices(forceRefreshAuth: forceRefreshAuth)
                 
-                // Hiển thị danh sách robot
+                // Hiển thị danh sách robot & Tải trước toàn bộ ảnh vào Disk Cache
                 self.devices = fetched
                 self.isLoading = false
                 self.isRefreshing = false
+                RobotImageCacheManager.shared.preloadImages(for: fetched)
                 if fetched.isEmpty {
                     self.errorMessage = "Chưa tìm thấy robot nào trong tài khoản."
                 }

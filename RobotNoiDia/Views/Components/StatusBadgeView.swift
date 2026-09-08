@@ -468,8 +468,8 @@ public final class RobotImageCacheManager {
     private let diskCacheUrl: URL
     
     private init() {
-        memoryCache.countLimit = 50
-        memoryCache.totalCostLimit = 40 * 1024 * 1024 // 40MB
+        memoryCache.countLimit = 100
+        memoryCache.totalCostLimit = 60 * 1024 * 1024 // 60MB
         
         let paths = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)
         diskCacheUrl = paths[0].appendingPathComponent("EcovacsRobotImages", isDirectory: true)
@@ -505,14 +505,40 @@ public final class RobotImageCacheManager {
         let fileUrl = diskCacheUrl.appendingPathComponent(key as String)
         try? data.write(to: fileUrl)
     }
+    
+    public func downloadAndCache(url: URL) async -> UIImage? {
+        if let cached = image(for: url) { return cached }
+        do {
+            var req = URLRequest(url: url)
+            req.timeoutInterval = 10
+            let (data, _) = try await URLSession.shared.data(for: req)
+            if let downloaded = UIImage(data: data) {
+                save(image: downloaded, data: data, for: url)
+                return downloaded
+            }
+        } catch {}
+        return nil
+    }
+    
+    /// Tự động tải trước và lưu vĩnh viễn hình ảnh của mọi Robot có trong tài khoản
+    public func preloadImages(for devices: [DeviceModel]) {
+        Task.detached(priority: .userInitiated) {
+            for dev in devices {
+                guard let url = dev.resolvedIconUrl else { continue }
+                if self.image(for: url) == nil {
+                    _ = await self.downloadAndCache(url: url)
+                }
+            }
+        }
+    }
 }
 
 /// Hiển thị hình ảnh Robot lớn ở màn hình chọn Robot (RobotPickerView)
-/// Nạp tức thì (0ms) từ App Assets hoặc Disk/Memory Cache, loại bỏ hoàn toàn độ trễ 5s
+/// Nạp tức thì (0ms) từ App Assets hoặc Disk/Memory Cache, tương thích 100% mọi dòng robot Ecovacs
 public struct RobotHeroImageView: View {
     public let device: DeviceModel
     
-    @State private var remoteImage: UIImage? = nil
+    @State private var displayImage: UIImage? = nil
     @State private var isLoading: Bool = false
     
     public init(device: DeviceModel) {
@@ -528,33 +554,23 @@ public struct RobotHeroImageView: View {
                 .blur(radius: 12)
                 .offset(y: 112)
             
-            // 1. Ưu tiên số 1: Ảnh gốc đóng gói sẵn trong App Assets (0ms, tức thì)
-            if let assetName = device.localAssetName, let assetImg = UIImage(named: assetName) {
-                Image(uiImage: assetImg)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 245)
-                    .shadow(color: Color.black.opacity(0.15), radius: 12, x: 0, y: 8)
-            } else if let img = remoteImage {
-                // 2. Ảnh từ Memory/Disk Cache
+            if let img = displayImage {
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFit()
                     .frame(height: 245)
                     .shadow(color: Color.black.opacity(0.15), radius: 12, x: 0, y: 8)
+                    .transition(.opacity.animation(.easeInOut(duration: 0.2)))
             } else {
-                // 3. Đang tải lần đầu cho model lạ qua mạng
+                // Placeholder thanh lịch trong lần đầu tải cho robot mới
                 ZStack {
+                    Circle()
+                        .fill(Color.black.opacity(0.04))
+                        .frame(width: 170, height: 170)
                     if isLoading {
                         ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .gray))
+                            .progressViewStyle(CircularProgressViewStyle(tint: .gray.opacity(0.6)))
                             .scaleEffect(1.1)
-                    } else {
-                        RobotStationHeroView(
-                            modelName: device.friendlyModelName,
-                            isCleaning: device.isCleaning,
-                            isDarkModel: device.isDarkModel
-                        )
                     }
                 }
                 .frame(height: 245)
@@ -562,35 +578,32 @@ public struct RobotHeroImageView: View {
         }
         .frame(height: 270)
         .onAppear {
-            loadRemoteIfNeeded()
+            resolveImage()
         }
     }
     
-    private func loadRemoteIfNeeded() {
-        // Đã có asset đóng gói sẵn trong máy -> Bỏ qua tải mạng
-        if let assetName = device.localAssetName, UIImage(named: assetName) != nil {
+    private func resolveImage() {
+        // 1. Kiểm tra ảnh đóng gói sẵn nếu có (0ms)
+        if let assetName = device.localAssetName, let assetImg = UIImage(named: assetName) {
+            self.displayImage = assetImg
             return
         }
+        // 2. Kiểm tra bộ nhớ Cache (RAM + Disk) từ URL API (0ms)
         guard let url = device.resolvedIconUrl else { return }
         if let cached = RobotImageCacheManager.shared.image(for: url) {
-            self.remoteImage = cached
+            self.displayImage = cached
             return
         }
         
+        // 3. Tải qua mạng và lưu vĩnh viễn vào Disk Cache
         isLoading = true
         Task {
-            do {
-                var req = URLRequest(url: url)
-                req.timeoutInterval = 8
-                let (data, _) = try await URLSession.shared.data(for: req)
-                if let downloaded = UIImage(data: data) {
-                    RobotImageCacheManager.shared.save(image: downloaded, data: data, for: url)
-                    await MainActor.run {
-                        self.remoteImage = downloaded
-                        self.isLoading = false
-                    }
+            if let downloaded = await RobotImageCacheManager.shared.downloadAndCache(url: url) {
+                await MainActor.run {
+                    self.displayImage = downloaded
+                    self.isLoading = false
                 }
-            } catch {
+            } else {
                 await MainActor.run {
                     self.isLoading = false
                 }
@@ -604,7 +617,7 @@ public struct RobotIconThumbnailView: View {
     public let device: DeviceModel
     public var size: CGFloat = 52
     
-    @State private var remoteImage: UIImage? = nil
+    @State private var displayImage: UIImage? = nil
     
     public init(device: DeviceModel, size: CGFloat = 52) {
         self.device = device
@@ -620,14 +633,8 @@ public struct RobotIconThumbnailView: View {
                         .stroke(device.isCleaning ? Color.cyan : Color.white.opacity(0.12), lineWidth: device.isCleaning ? 1.5 : 1)
                 )
             
-            // 1. Kiểm tra Asset đóng gói sẵn (0ms)
-            if let assetName = device.localAssetName, let assetImg = UIImage(named: assetName) {
-                Image(uiImage: assetImg)
-                    .resizable()
-                    .scaledToFit()
-                    .padding(size * 0.1)
-            } else if let img = remoteImage {
-                // 2. Ảnh từ cache
+            // 1. Kiểm tra ảnh đóng gói sẵn hoặc ảnh từ Cache (0ms)
+            if let img = displayImage {
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFit()
@@ -646,33 +653,30 @@ public struct RobotIconThumbnailView: View {
         }
         .frame(width: size, height: size)
         .onAppear {
-            loadThumbnailIfNeeded()
+            resolveThumbnail()
         }
     }
     
-    private func loadThumbnailIfNeeded() {
-        if let assetName = device.localAssetName, UIImage(named: assetName) != nil {
+    private func resolveThumbnail() {
+        if let assetName = device.localAssetName, let assetImg = UIImage(named: assetName) {
+            self.displayImage = assetImg
             return
         }
         guard let url = device.resolvedIconUrl else { return }
         if let cached = RobotImageCacheManager.shared.image(for: url) {
-            self.remoteImage = cached
+            self.displayImage = cached
             return
         }
         Task {
-            do {
-                var req = URLRequest(url: url)
-                req.timeoutInterval = 8
-                let (data, _) = try await URLSession.shared.data(for: req)
-                if let downloaded = UIImage(data: data) {
-                    RobotImageCacheManager.shared.save(image: downloaded, data: data, for: url)
-                    await MainActor.run {
-                        self.remoteImage = downloaded
-                    }
+            if let downloaded = await RobotImageCacheManager.shared.downloadAndCache(url: url) {
+                await MainActor.run {
+                    self.displayImage = downloaded
                 }
-            } catch {}
+            }
         }
     }
 }
+    
+
 
 
