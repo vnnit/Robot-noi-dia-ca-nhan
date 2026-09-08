@@ -674,7 +674,7 @@ public struct LiDARRadarScanningView: View {
                             Circle()
                                 .fill(state.isCharging ? Color.green : Color.blue)
                                 .frame(width: 6, height: 6)
-                            Text(state.isCharging ? "Tại trạm sạc" : (state.isWorking ? "Đang làm việc" : "Sẵn sàng"))
+                            Text(state.isCharging ? "Tại trạm sạc" : (state.cleanState == "clean" ? "Đang làm việc" : "Sẵn sàng"))
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundColor(.gray)
                         }
