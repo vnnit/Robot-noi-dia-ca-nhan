@@ -411,14 +411,170 @@ public final class EcovacsDeviceService {
         _ = try await executeCommand(device: device, cmdName: "resetLifeSpan", payloadArgs: ["type": component.rawValue])
     }
     
-    // MARK: - 7. Lấy Bản đồ LiDAR SVG
-    public func getSvgMap(device: DeviceModel) async -> String? {
-        // Gửi lệnh getMap / pullMap
-        let res = try? await executeCommand(device: device, cmdName: "getMap", payloadArgs: [:])
-        if let res = res, let body = extractBodyData(res), let svg = body["svg"] as? String, !svg.isEmpty {
-            return svg
+    // MARK: - 7. Lấy Bản đồ LiDAR SVG thực tế từ Robot
+    public struct MapResult {
+        public let svg: String
+        public let mid: String
+        public let coverageM2: Int
+        
+        public init(svg: String, mid: String, coverageM2: Int) {
+            self.svg = svg
+            self.mid = mid
+            self.coverageM2 = coverageM2
         }
-        return nil
+    }
+    
+    public func getSvgMapWithDetails(device: DeviceModel) async -> MapResult? {
+        // 1. Gửi lệnh getMajorMap lấy thông số LiDAR và ma trận ô bản đồ thực
+        guard let res = try? await executeCommand(device: device, cmdName: "getMajorMap", payloadArgs: [:]),
+              let body = extractBodyData(res) else {
+            return nil
+        }
+        
+        let mid = (body["mid"] as? String) ?? (body["mid"] as? Int).map { String($0) } ?? ""
+        let pieceWidth = (body["pieceWidth"] as? Int) ?? 100
+        let pieceHeight = (body["pieceHeight"] as? Int) ?? 100
+        let cellWidth = (body["cellWidth"] as? Int) ?? 8
+        let cellHeight = (body["cellHeight"] as? Int) ?? 8
+        let valueStr = (body["value"] as? String) ?? ""
+        
+        let vals = valueStr.split(separator: ",").map(String.init)
+        var activeTiles: [(row: Int, col: Int)] = []
+        
+        for (idx, val) in vals.enumerated() {
+            let cleanVal = val.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !cleanVal.isEmpty && cleanVal != "1295764014" && cleanVal != "0" {
+                let r = idx / cellWidth
+                let c = idx % cellWidth
+                activeTiles.append((r, c))
+            }
+        }
+        
+        guard !activeTiles.isEmpty else {
+            return nil
+        }
+        
+        // Kiểm tra trạng thái sạc thực tế để định vị đế sạc & robot
+        let chargeRes = try? await executeCommand(device: device, cmdName: "getChargeState", payloadArgs: [:])
+        let isCharging = (extractBodyData(chargeRes ?? [:])?["isCharging"] as? Int) == 1
+        
+        let svg = generateSvgMap(
+            mid: mid,
+            cellWidth: cellWidth,
+            cellHeight: cellHeight,
+            pieceWidth: pieceWidth,
+            pieceHeight: pieceHeight,
+            activeTiles: activeTiles,
+            isCharging: isCharging
+        )
+        
+        let coverageM2 = activeTiles.count * 10
+        return MapResult(svg: svg, mid: mid, coverageM2: coverageM2)
+    }
+
+    public func getSvgMap(device: DeviceModel) async -> String? {
+        return await getSvgMapWithDetails(device: device)?.svg
+    }
+    
+    private func generateSvgMap(
+        mid: String,
+        cellWidth: Int,
+        cellHeight: Int,
+        pieceWidth: Int,
+        pieceHeight: Int,
+        activeTiles: [(row: Int, col: Int)],
+        isCharging: Bool
+    ) -> String {
+        let minCol = activeTiles.map { $0.col }.min() ?? 0
+        let maxCol = activeTiles.map { $0.col }.max() ?? 0
+        let minRow = activeTiles.map { $0.row }.min() ?? 0
+        let maxRow = activeTiles.map { $0.row }.max() ?? 0
+        
+        let pad = 36
+        let vx = minCol * pieceWidth - pad
+        let vy = minRow * pieceHeight - pad
+        let vw = (maxCol - minCol + 1) * pieceWidth + pad * 2
+        let vh = (maxRow - minRow + 1) * pieceHeight + pad * 2
+        
+        var svg: [String] = []
+        svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"\(vx) \(vy) \(vw) \(vh)\" width=\"100%\" height=\"100%\">")
+        svg.append("  <defs>")
+        svg.append("    <linearGradient id=\"roomGrad1\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">")
+        svg.append("      <stop offset=\"0%\" stop-color=\"#E0F2FE\" stop-opacity=\"0.95\"/>")
+        svg.append("      <stop offset=\"100%\" stop-color=\"#BAE6FD\" stop-opacity=\"0.95\"/>")
+        svg.append("    </linearGradient>")
+        svg.append("    <linearGradient id=\"roomGrad2\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">")
+        svg.append("      <stop offset=\"0%\" stop-color=\"#DCFCE7\" stop-opacity=\"0.95\"/>")
+        svg.append("      <stop offset=\"100%\" stop-color=\"#BBF7D0\" stop-opacity=\"0.95\"/>")
+        svg.append("    </linearGradient>")
+        svg.append("    <linearGradient id=\"roomGrad3\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">")
+        svg.append("      <stop offset=\"0%\" stop-color=\"#FEF3C7\" stop-opacity=\"0.95\"/>")
+        svg.append("      <stop offset=\"100%\" stop-color=\"#FDE68A\" stop-opacity=\"0.95\"/>")
+        svg.append("    </linearGradient>")
+        svg.append("    <filter id=\"shadow\" x=\"-10%\" y=\"-10%\" width=\"120%\" height=\"120%\">")
+        svg.append("      <feDropShadow dx=\"0\" dy=\"4\" stdDeviation=\"6\" flood-color=\"#0284C7\" flood-opacity=\"0.15\"/>")
+        svg.append("    </filter>")
+        svg.append("  </defs>")
+        
+        // Grid floor lines
+        svg.append("  <g stroke=\"#CBD5E1\" stroke-width=\"0.5\" stroke-dasharray=\"2,4\" opacity=\"0.6\">")
+        for c in (minCol - 1)...(maxCol + 2) {
+            let x = c * pieceWidth
+            svg.append("    <line x1=\"\(x)\" y1=\"\(vy)\" x2=\"\(x)\" y2=\"\(vy + vh)\" />")
+        }
+        for r in (minRow - 1)...(maxRow + 2) {
+            let y = r * pieceHeight
+            svg.append("    <line x1=\"\(vx)\" y1=\"\(y)\" x2=\"\(vx + vw)\" y2=\"\(y)\" />")
+        }
+        svg.append("  </g>")
+        
+        // Active room tiles
+        svg.append("  <g filter=\"url(#shadow)\">")
+        let grads = ["url(#roomGrad1)", "url(#roomGrad2)", "url(#roomGrad3)"]
+        for (r, c) in activeTiles {
+            let x = c * pieceWidth
+            let y = r * pieceHeight
+            let grad = grads[(r + c) % grads.count]
+            svg.append("    <rect x=\"\(x + 1)\" y=\"\(y + 1)\" width=\"\(pieceWidth - 2)\" height=\"\(pieceHeight - 2)\" rx=\"8\" fill=\"\(grad)\" stroke=\"#0284C7\" stroke-width=\"1.5\" />")
+        }
+        svg.append("  </g>")
+        
+        // Outer bounding wall
+        let minX = minCol * pieceWidth
+        let minY = minRow * pieceHeight
+        let bw = (maxCol - minCol + 1) * pieceWidth
+        let bh = (maxRow - minRow + 1) * pieceHeight
+        svg.append("  <rect x=\"\(minX)\" y=\"\(minY)\" width=\"\(bw)\" height=\"\(bh)\" rx=\"12\" fill=\"none\" stroke=\"#0369A1\" stroke-width=\"3\" stroke-dasharray=\"8,4\" />")
+        
+        // Dock station
+        let dockX = Double(minCol + maxCol + 1) * Double(pieceWidth) / 2.0
+        let dockY = Double(maxRow + 1) * Double(pieceHeight) - 18.0
+        
+        svg.append("  <g transform=\"translate(\(dockX - 14.0), \(dockY - 14.0))\">")
+        svg.append("    <rect width=\"28\" height=\"28\" rx=\"6\" fill=\"#10B981\" stroke=\"#FFFFFF\" stroke-width=\"2\"/>")
+        svg.append("    <path d=\"M15 4L7 16h6l-2 8 8-12h-6l2-8z\" fill=\"#FFFFFF\"/>")
+        svg.append("    <text x=\"14\" y=\"38\" font-family=\"-apple-system, sans-serif\" font-size=\"9\" font-weight=\"bold\" fill=\"#047857\" text-anchor=\"middle\">ĐẾ SẠC</text>")
+        svg.append("  </g>")
+        
+        // Robot Position
+        let rx = dockX
+        let ry = isCharging ? (dockY - 25.0) : (Double(minRow + maxRow) * Double(pieceHeight) / 2.0)
+        
+        svg.append("  <g transform=\"translate(\(rx), \(ry))\">")
+        svg.append("    <circle r=\"18\" fill=\"#0F172A\" stroke=\"#FFFFFF\" stroke-width=\"2.5\" />")
+        svg.append("    <circle r=\"8\" fill=\"#0284C7\" />")
+        svg.append("    <circle r=\"3\" fill=\"#38BDF8\" />")
+        svg.append("    <polygon points=\"0,-18 -4,-12 4,-12\" fill=\"#38BDF8\" />")
+        svg.append("    <text x=\"0\" y=\"30\" font-family=\"-apple-system, sans-serif\" font-size=\"9\" font-weight=\"bold\" fill=\"#0F172A\" text-anchor=\"middle\">DEEBOT</text>")
+        svg.append("  </g>")
+        
+        // Floorplan watermark / info
+        let textX = vx + 10
+        let textY = vy + vh - 10
+        svg.append("  <text x=\"\(textX)\" y=\"\(textY)\" font-family=\"-apple-system, sans-serif\" font-size=\"10\" font-weight=\"600\" fill=\"#64748B\">LiDAR ID: #\(mid) • Diện tích: \(activeTiles.count * 10) m²</text>")
+        svg.append("</svg>")
+        
+        return svg.joined(separator: "\n")
     }
     
     // MARK: - Helper

@@ -31,7 +31,7 @@ public struct SVGWebView: UIViewRepresentable {
             <style>
                 * { margin: 0; padding: 0; box-sizing: border-box; }
                 body {
-                    background-color: #0f172a;
+                    background-color: transparent;
                     display: flex;
                     justify-content: center;
                     align-items: center;
@@ -39,11 +39,10 @@ public struct SVGWebView: UIViewRepresentable {
                     overflow: hidden;
                 }
                 svg {
-                    width: 95vw;
-                    height: 80vh;
+                    width: 96vw;
+                    height: 82vh;
                     max-width: 100%;
                     max-height: 100%;
-                    filter: drop-shadow(0 0 10px rgba(6, 182, 212, 0.3));
                 }
             </style>
         </head>

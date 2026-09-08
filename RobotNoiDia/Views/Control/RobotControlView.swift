@@ -76,9 +76,11 @@ public struct RobotControlView: View {
                             SVGWebView(svgString: svg)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                         } else {
-                            // Bản đồ phân biệt riêng cho từng robot
-                            RealisticEcovacsMapView(device: viewModel.device, state: viewModel.state)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            // Radar quét LiDAR chân thực khi chưa có hoặc đang đồng bộ bản đồ
+                            LiDARRadarScanningView(device: viewModel.device, state: viewModel.state) {
+                                Task { await viewModel.refreshMap() }
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                     }
                     .frame(height: screenHeight - 230)
@@ -87,7 +89,7 @@ public struct RobotControlView: View {
                 }
                 
                 // 2. CÁC NÚT NỔI TRÊN BẢN ĐỒ
-                // Phía trên bên trái: Tên bản đồ
+                // Phía trên bên trái: Tên bản đồ & ID thực tế
                 VStack(alignment: .leading, spacing: 8) {
                     Spacer().frame(height: 105)
                     
@@ -95,6 +97,16 @@ public struct RobotControlView: View {
                         Text("Bản đồ: \(viewModel.device.friendlyModelName)")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(Color(white: 0.3))
+                        if let mid = viewModel.mapId, !mid.isEmpty {
+                            Text("• #\(mid)")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(Color.blue)
+                        }
+                        if let cov = viewModel.mapCoverageM2, cov > 0 {
+                            Text("• \(cov) m²")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(Color(red: 0.0, green: 0.6, blue: 0.3))
+                        }
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -580,187 +592,116 @@ public struct RobotControlView: View {
     }
 }
 
-// MARK: - View Bản đồ Chân thực phân biệt riêng cho từng Robot
-public struct RealisticEcovacsMapView: View {
+// MARK: - View Radar quét LiDAR thực tế (khi chưa tải xong bản đồ)
+public struct LiDARRadarScanningView: View {
     let device: DeviceModel
     let state: DeviceState
+    let onRefresh: () -> Void
     
-    // Kiểm tra xem robot này là T10 hay model khác để vẽ bố cục phòng tương ứng
-    private var isModelT10: Bool {
-        let txt = (device.friendlyModelName + " " + device.model + " " + device.deviceClass).lowercased()
-        return txt.contains("t10")
-    }
+    @State private var isRotating: Bool = false
     
     public var body: some View {
         GeometryReader { geo in
             let w = geo.size.width
             let h = geo.size.height
+            let radius = min(w, h) * 0.35
             
             ZStack {
                 Color(red: 0.94, green: 0.96, blue: 0.98)
                 
-                if isModelT10 {
-                    // ================= BẢN ĐỒ DÀNH RIÊNG CHO DEEBOT T10 TURBO =================
-                    // (Theo ảnh chụp thực tế: 2 phòng Pink & Mint, vệt ngang)
+                // Vòng radar LiDAR
+                ZStack {
+                    Circle()
+                        .stroke(Color.blue.opacity(0.12), lineWidth: 1.5)
+                        .frame(width: radius * 2, height: radius * 2)
+                    
+                    Circle()
+                        .stroke(Color.blue.opacity(0.18), lineWidth: 1.5)
+                        .frame(width: radius * 1.4, height: radius * 1.4)
+                    
+                    Circle()
+                        .stroke(Color.blue.opacity(0.24), lineWidth: 1.5)
+                        .frame(width: radius * 0.75, height: radius * 0.75)
+                    
+                    // Trục ngang và trục dọc radar
                     Path { path in
-                        path.move(to: CGPoint(x: w * 0.55, y: h * 0.18))
-                        path.addLine(to: CGPoint(x: w * 0.88, y: h * 0.18))
-                        path.addLine(to: CGPoint(x: w * 0.88, y: h * 0.58))
-                        path.addLine(to: CGPoint(x: w * 0.72, y: h * 0.58))
-                        path.addLine(to: CGPoint(x: w * 0.55, y: h * 0.45))
-                        path.closeSubpath()
+                        path.move(to: CGPoint(x: 0, y: radius))
+                        path.addLine(to: CGPoint(x: radius * 2, y: radius))
+                        path.move(to: CGPoint(x: radius, y: 0))
+                        path.addLine(to: CGPoint(x: radius, y: radius * 2))
                     }
-                    .fill(Color(red: 1.0, green: 0.68, blue: 0.75).opacity(0.7))
+                    .stroke(Color.blue.opacity(0.08), lineWidth: 1)
+                    .frame(width: radius * 2, height: radius * 2)
                     
-                    Path { path in
-                        path.move(to: CGPoint(x: w * 0.12, y: h * 0.22))
-                        path.addLine(to: CGPoint(x: w * 0.55, y: h * 0.22))
-                        path.addLine(to: CGPoint(x: w * 0.55, y: h * 0.62))
-                        path.addLine(to: CGPoint(x: w * 0.22, y: h * 0.62))
-                        path.addLine(to: CGPoint(x: w * 0.12, y: h * 0.55))
-                        path.closeSubpath()
-                    }
-                    .fill(Color(red: 0.35, green: 0.86, blue: 0.72).opacity(0.7))
+                    // Tia quét radar xoay liên tục
+                    Circle()
+                        .fill(
+                            AngularGradient(
+                                gradient: Gradient(colors: [
+                                    Color.blue.opacity(0.0),
+                                    Color.blue.opacity(0.0),
+                                    Color.blue.opacity(0.25)
+                                ]),
+                                center: .center
+                            )
+                        )
+                        .frame(width: radius * 2, height: radius * 2)
+                        .rotationEffect(.degrees(isRotating ? 360 : 0))
+                        .animation(Animation.linear(duration: 3.5).repeatForever(autoreverses: false), value: isRotating)
+                        .onAppear {
+                            isRotating = true
+                        }
                     
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color(red: 0.72, green: 0.80, blue: 0.92), lineWidth: 2)
-                        .frame(width: w * 0.84, height: h * 0.52)
-                        .position(x: w * 0.5, y: h * 0.4)
-                    
-                    // Vệt dọn dẹp zíc-zắc ngang
-                    Path { path in
-                        let startY = h * 0.20
-                        let endY = h * 0.50
-                        let startX = w * 0.15
-                        let endX = w * 0.84
-                        let stepY: CGFloat = 11
-                        var currentY = startY
-                        var goRight = true
-                        path.move(to: CGPoint(x: startX, y: currentY))
-                        while currentY < endY {
-                            let nextX = goRight ? endX : startX
-                            path.addLine(to: CGPoint(x: nextX, y: currentY))
-                            currentY += stepY
-                            path.addLine(to: CGPoint(x: nextX, y: currentY))
-                            goRight.toggle()
+                    // Biểu tượng Robot ở giữa radar
+                    VStack(spacing: 6) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(white: 0.15))
+                                .frame(width: 46, height: 46)
+                            Circle()
+                                .stroke(Color.white, lineWidth: 3)
+                                .frame(width: 46, height: 46)
+                            Image(systemName: "fanblades.fill")
+                                .font(.system(size: 18))
+                                .foregroundColor(.white)
+                        }
+                        
+                        Text(device.friendlyModelName)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(Color(white: 0.25))
+                        
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(state.isCharging ? Color.green : Color.blue)
+                                .frame(width: 6, height: 6)
+                            Text(state.isCharging ? "Tại trạm sạc" : (state.isWorking ? "Đang làm việc" : "Sẵn sàng"))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.gray)
                         }
                     }
-                    .stroke(Color.white.opacity(0.9), lineWidth: 1.5)
-                    
-                    // Tên phòng
-                    Text("Phòng 1")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(Color(white: 0.35))
-                        .position(x: w * 0.75, y: h * 0.48)
-                    
-                    Text("Phòng 2")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(Color(white: 0.35))
-                        .position(x: w * 0.38, y: h * 0.54)
-                    
-                    // Trạm sạc pin bên phải
-                    ZStack {
-                        Circle()
-                            .fill(Color(red: 0.0, green: 0.78, blue: 0.46))
-                            .frame(width: 22, height: 22)
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 12))
-                            .foregroundColor(.white)
-                    }
-                    .position(x: w * 0.86, y: h * 0.38)
-                    
-                    // Robot
-                    ZStack {
-                        Circle()
-                            .fill(Color(white: 0.15))
-                            .frame(width: 22, height: 22)
-                        Circle()
-                            .stroke(Color.white, lineWidth: 2)
-                            .frame(width: 22, height: 22)
-                        Circle()
-                            .fill(Color(red: 0.09, green: 0.47, blue: 1.0))
-                            .frame(width: 8, height: 8)
-                    }
-                    .position(x: w * 0.86, y: h * 0.43)
-                    
-                } else {
-                    // ================= BẢN ĐỒ RIÊNG CHO ROBOT THỨ HAI (VD: T9 AIVI, T8...) =================
-                    // (Bố cục 3 phòng: Phòng khách xanh dương, Phòng ngủ vàng hổ phách, Ban công xanh lá)
-                    Path { path in
-                        path.addRoundedRect(in: CGRect(x: w * 0.12, y: h * 0.16, width: w * 0.44, height: h * 0.34), cornerSize: CGSize(width: 10, height: 10))
-                    }
-                    .fill(Color(red: 0.45, green: 0.70, blue: 0.98).opacity(0.65))
-                    
-                    Path { path in
-                        path.addRoundedRect(in: CGRect(x: w * 0.58, y: h * 0.16, width: w * 0.30, height: h * 0.22), cornerSize: CGSize(width: 10, height: 10))
-                    }
-                    .fill(Color(red: 0.98, green: 0.80, blue: 0.45).opacity(0.65))
-                    
-                    Path { path in
-                        path.addRoundedRect(in: CGRect(x: w * 0.58, y: h * 0.40, width: w * 0.30, height: h * 0.20), cornerSize: CGSize(width: 10, height: 10))
-                    }
-                    .fill(Color(red: 0.50, green: 0.88, blue: 0.65).opacity(0.65))
-                    
-                    // Vệt dọn dẹp zíc-zắc dọc trong phòng khách
-                    Path { path in
-                        let startX = w * 0.15
-                        let endX = w * 0.53
-                        let startY = h * 0.18
-                        let endY = h * 0.47
-                        let stepX: CGFloat = 12
-                        var currentX = startX
-                        var goDown = true
-                        path.move(to: CGPoint(x: currentX, y: startY))
-                        while currentX < endX {
-                            let nextY = goDown ? endY : startY
-                            path.addLine(to: CGPoint(x: currentX, y: nextY))
-                            currentX += stepX
-                            path.addLine(to: CGPoint(x: currentX, y: nextY))
-                            goDown.toggle()
-                        }
-                    }
-                    .stroke(Color.white.opacity(0.9), lineWidth: 1.5)
-                    
-                    Text("Phòng khách")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(Color(white: 0.35))
-                        .position(x: w * 0.34, y: h * 0.33)
-                    
-                    Text("Phòng ngủ")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(Color(white: 0.35))
-                        .position(x: w * 0.73, y: h * 0.27)
-                    
-                    Text("Ban công")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(Color(white: 0.35))
-                        .position(x: w * 0.73, y: h * 0.50)
-                    
-                    // Trạm sạc góc trên bên trái
-                    ZStack {
-                        Circle()
-                            .fill(Color(red: 0.0, green: 0.78, blue: 0.46))
-                            .frame(width: 22, height: 22)
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 12))
-                            .foregroundColor(.white)
-                    }
-                    .position(x: w * 0.20, y: h * 0.19)
-                    
-                    // Robot đang ở phòng khách
-                    ZStack {
-                        Circle()
-                            .fill(Color(white: 0.15))
-                            .frame(width: 22, height: 22)
-                        Circle()
-                            .stroke(Color.white, lineWidth: 2)
-                            .frame(width: 22, height: 22)
-                        Circle()
-                            .fill(Color(red: 0.09, green: 0.47, blue: 1.0))
-                            .frame(width: 8, height: 8)
-                    }
-                    .position(x: w * 0.40, y: h * 0.36)
                 }
+                .position(x: w / 2, y: h * 0.40)
+                
+                // Trạng thái & nút thao tác
+                VStack(spacing: 12) {
+                    Text("Đang đồng bộ bản đồ LiDAR từ cảm biến...")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(Color(white: 0.45))
+                    
+                    Button(action: onRefresh) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.clockwise")
+                            Text("Tải lại bản đồ LiDAR")
+                        }
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.12))
+                        .cornerRadius(20)
+                    }
+                }
+                .position(x: w / 2, y: h * 0.75)
             }
         }
     }

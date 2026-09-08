@@ -32,6 +32,8 @@ public final class RobotControlViewModel: ObservableObject {
     @Published public var state: DeviceState = .initial
     @Published public var consumables: ConsumablesData = .default
     @Published public var svgMap: String? = nil
+    @Published public var mapId: String? = nil
+    @Published public var mapCoverageM2: Int? = nil
     @Published public var selectedTab: ControlTab = .controls
     
     // Thuộc tính điều khiển chi tiết theo Hình 2, 3, 4
@@ -328,9 +330,15 @@ public final class RobotControlViewModel: ObservableObject {
     // MARK: - Map
     public func refreshMap() async {
         isMapLoading = true
-        let svg = await deviceService.getSvgMap(device: device)
-        if let svg = svg {
-            self.svgMap = svg
+        let mapResult = await deviceService.getSvgMapWithDetails(device: device)
+        if let res = mapResult {
+            self.svgMap = res.svg
+            self.mapId = res.mid
+            self.mapCoverageM2 = res.coverageM2
+        } else {
+            self.svgMap = nil
+            self.mapId = nil
+            self.mapCoverageM2 = nil
         }
         self.isMapLoading = false
     }
