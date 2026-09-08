@@ -44,6 +44,10 @@ public struct DeviceState: Codable {
     public var cleanStateText: String
     public var cleanTrigger: String
     
+    public var isWorking: Bool {
+        return cleanState == "clean"
+    }
+    
     public var fanSpeed: String
     public var waterAmount: Int // 1..4
     
