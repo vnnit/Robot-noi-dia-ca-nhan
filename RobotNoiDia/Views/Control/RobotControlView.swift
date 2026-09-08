@@ -4,8 +4,8 @@ public struct RobotControlView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var viewModel: RobotControlViewModel
     
-    // Bottom Sheet offset (tính toán động theo kích thước màn hình)
-    @State private var sheetDragTranslation: CGFloat = 0
+    // Quản lý Bottom Sheet kéo vuốt mượt mà
+    @State private var dragOffset: CGFloat = 0
     @State private var isSheetExpanded: Bool = false
     
     @State private var showRenameAlert: Bool = false
@@ -21,13 +21,37 @@ public struct RobotControlView: View {
             let screenHeight = geometry.size.height
             let screenWidth = geometry.size.width
             
-            // Chiều cao Bottom Sheet khi thu gọn: 220pt (chừa >75% không gian cho Bản đồ)
-            let collapsedHeight: CGFloat = 220
+            // Chiều cao Bottom Sheet: thu gọn 240pt, mở rộng sát đỉnh (còn 90pt cho Top Bar)
+            let collapsedHeight: CGFloat = 240
             let expandedHeight: CGFloat = screenHeight - 90
+            let collapsedOffsetY = screenHeight - collapsedHeight
+            let expandedOffsetY: CGFloat = 90
             
-            let currentSheetHeight = isSheetExpanded ? expandedHeight : collapsedHeight
-            let effectiveHeight = max(collapsedHeight, min(expandedHeight, currentSheetHeight - sheetDragTranslation))
-            let sheetOffsetY = screenHeight - effectiveHeight
+            let baseOffsetY = isSheetExpanded ? expandedOffsetY : collapsedOffsetY
+            let currentSheetOffsetY = max(expandedOffsetY, min(collapsedOffsetY, baseOffsetY + dragOffset))
+            
+            // Cử chỉ kéo vuốt Bottom Sheet dùng chung
+            let sheetDragGesture = DragGesture(minimumDistance: 5)
+                .onChanged { value in
+                    dragOffset = value.translation.height
+                }
+                .onEnded { value in
+                    let velocity = value.predictedEndTranslation.height
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        if isSheetExpanded {
+                            // Đang mở: kéo xuống > 35pt hoặc vuốt mạnh xuống thì thu gọn
+                            if value.translation.height > 35 || velocity > 120 {
+                                isSheetExpanded = false
+                            }
+                        } else {
+                            // Đang thu gọn: kéo lên < -35pt hoặc vuốt mạnh lên thì mở rộng
+                            if value.translation.height < -35 || velocity < -120 {
+                                isSheetExpanded = true
+                            }
+                        }
+                        dragOffset = 0
+                    }
+                }
             
             ZStack(alignment: .top) {
                 // 1. NỀN BẢN ĐỒ
@@ -220,22 +244,33 @@ public struct RobotControlView: View {
                     .transition(.opacity)
                 }
                 
-                // 5. DRAGGABLE BOTTOM SHEET (Chỉ giữ TỰ ĐỘNG, bỏ Khu vực & Tùy chỉnh)
+                // 5. DRAGGABLE BOTTOM SHEET (Chỉ giữ TỰ ĐỘNG, vuốt lên để xem cài đặt)
                 VStack(spacing: 0) {
-                    // Thanh gạt (Drag indicator)
-                    VStack(spacing: 6) {
+                    // Thanh gạt (Drag indicator) & Chỉ dẫn vuốt/chạm
+                    VStack(spacing: 4) {
                         Capsule()
                             .fill(Color.gray.opacity(0.35))
-                            .frame(width: 36, height: 4)
+                            .frame(width: 40, height: 5)
                             .padding(.top, 8)
+                        
+                        HStack(spacing: 4) {
+                            Image(systemName: isSheetExpanded ? "chevron.down" : "chevron.up")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                            Text(isSheetExpanded ? "Thu gọn" : "Vuốt lên xem cài đặt")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(Color(white: 0.45))
+                        }
+                        .padding(.bottom, 4)
                     }
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                             isSheetExpanded.toggle()
                         }
                     }
+                    .highPriorityGesture(sheetDragGesture)
                     
                     // Nội dung Bottom Sheet
                     ScrollView(showsIndicators: false) {
@@ -483,32 +518,17 @@ public struct RobotControlView: View {
                                 .padding(.top, 4)
                             }
                             .padding(.horizontal, 20)
-                            
-                            Spacer().frame(height: 60)
+                            Spacer().frame(height: 100)
                         }
                     }
+                    .scrollDisabled(!isSheetExpanded)
                 }
                 .frame(width: screenWidth, height: expandedHeight)
                 .background(Color.white)
                 .cornerRadius(24, corners: [.topLeft, .topRight])
                 .shadow(color: Color.black.opacity(0.12), radius: 12, y: -4)
-                .offset(y: sheetOffsetY)
-                .gesture(
-                    DragGesture()
-                        .onChanged { value in
-                            sheetDragTranslation = -value.translation.height
-                        }
-                        .onEnded { value in
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                if value.translation.height < -60 {
-                                    isSheetExpanded = true
-                                } else if value.translation.height > 60 {
-                                    isSheetExpanded = false
-                                }
-                                sheetDragTranslation = 0
-                            }
-                        }
-                )
+                .offset(y: currentSheetOffsetY)
+                .simultaneousGesture(sheetDragGesture)
                 
                 // Toast thông báo nổi
                 if viewModel.showToast, let msg = viewModel.toastMessage {
