@@ -75,6 +75,9 @@ public struct RobotControlView: View {
                         } else if let svg = viewModel.svgMap, !svg.isEmpty {
                             SVGWebView(svgString: svg)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .cornerRadius(18)
+                                .padding(.horizontal, 8)
+                                .shadow(color: Color.black.opacity(0.18), radius: 8, y: 3)
                         } else {
                             // Radar quét LiDAR chân thực khi chưa có hoặc đang đồng bộ bản đồ
                             LiDARRadarScanningView(device: viewModel.device, state: viewModel.state) {
@@ -93,25 +96,29 @@ public struct RobotControlView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Spacer().frame(height: 105)
                     
-                    HStack(spacing: 4) {
-                        Text("Bản đồ: \(viewModel.device.friendlyModelName)")
+                    HStack(spacing: 5) {
+                        Image(systemName: "dot.radiowaves.left.and.right")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.cyan)
+                        Text(viewModel.device.friendlyModelName)
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color(white: 0.3))
+                            .foregroundColor(Color.white)
                         if let mid = viewModel.mapId, !mid.isEmpty {
-                            Text("• #\(mid)")
+                            Text("• \(mid)")
                                 .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(Color.blue)
+                                .foregroundColor(Color.cyan)
                         }
                         if let cov = viewModel.mapCoverageM2, cov > 0 {
                             Text("• \(cov) m²")
                                 .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(Color(red: 0.0, green: 0.6, blue: 0.3))
+                                .foregroundColor(Color(red: 0.0, green: 0.85, blue: 0.45))
                         }
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.85))
+                    .background(Color.black.opacity(0.65))
                     .cornerRadius(8)
+                    .shadow(color: Color.black.opacity(0.15), radius: 4, y: 2)
                     
                     Spacer()
                 }

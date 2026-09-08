@@ -330,7 +330,10 @@ public final class RobotControlViewModel: ObservableObject {
     // MARK: - Map
     public func refreshMap() async {
         isMapLoading = true
-        let mapResult = await deviceService.getSvgMapWithDetails(device: device)
+        // 1. Kích hoạt cập nhật bản đồ mới nhất từ robot qua DIY server
+        let refreshed = await deviceService.triggerDiyMapRefresh(device: device)
+        // 2. Nếu không có kết quả mới, lấy từ cache hoặc dự phòng cloud
+        let mapResult = refreshed ?? (await deviceService.getSvgMapWithDetails(device: device))
         if let res = mapResult {
             self.svgMap = res.svg
             self.mapId = res.mid

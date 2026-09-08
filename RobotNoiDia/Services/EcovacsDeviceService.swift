@@ -425,7 +425,12 @@ public final class EcovacsDeviceService {
     }
     
     public func getSvgMapWithDetails(device: DeviceModel) async -> MapResult? {
-        // 1. Gửi lệnh getMajorMap lấy thông số LiDAR và ma trận ô bản đồ thực
+        // 1. Ưu tiên tải bản đồ LiDAR thực tế từ Máy chủ DIY Backend (HƯỚNG 2)
+        if let diyResult = await fetchMapFromDIYServer(device: device) {
+            return diyResult
+        }
+        
+        // 2. Dự phòng: Gửi lệnh getMajorMap qua Ecovacs Cloud
         guard let res = try? await executeCommand(device: device, cmdName: "getMajorMap", payloadArgs: [:]),
               let body = extractBodyData(res) else {
             return nil
@@ -474,6 +479,56 @@ public final class EcovacsDeviceService {
 
     public func getSvgMap(device: DeviceModel) async -> String? {
         return await getSvgMapWithDetails(device: device)?.svg
+    }
+    
+    // MARK: - Tải bản đồ LiDAR độ phân giải cao từ Máy chủ DIY (HƯỚNG 2)
+    public func fetchMapFromDIYServer(device: DeviceModel) async -> MapResult? {
+        let baseUrl = Constants.diyServerBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: "\(baseUrl)/api/devices/\(device.did)/map") else {
+            return nil
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 4.0
+        
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let hasMap = json["has_map"] as? Bool, hasMap,
+                  let svg = json["svg"] as? String,
+                  svg.contains("<svg") else {
+                return nil
+            }
+            return MapResult(svg: svg, mid: "LiDAR", coverageM2: 0)
+        } catch {
+            return nil
+        }
+    }
+    
+    public func triggerDiyMapRefresh(device: DeviceModel) async -> MapResult? {
+        let baseUrl = Constants.diyServerBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: "\(baseUrl)/api/devices/\(device.did)/map/refresh") else {
+            return nil
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 6.0
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = "{}".data(using: .utf8)
+        
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let svg = json["svg"] as? String,
+                  svg.contains("<svg") else {
+                return nil
+            }
+            return MapResult(svg: svg, mid: "LiDAR", coverageM2: 0)
+        } catch {
+            return nil
+        }
     }
     
     private func generateSvgMap(
