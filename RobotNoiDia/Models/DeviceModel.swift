@@ -21,7 +21,14 @@ public struct DeviceModel: Identifiable, Codable, Hashable {
     public var cleanState: String?
     public var cleanStateText: String?
     
+    public var customNick: String? {
+        UserDefaults.standard.string(forKey: "custom_robot_name_\(did)")
+    }
+    
     public var displayName: String {
+        if let custom = customNick, !custom.trimmingCharacters(in: .whitespaces).isEmpty {
+            return custom.trimmingCharacters(in: .whitespaces)
+        }
         if let nick = nick, !nick.trimmingCharacters(in: .whitespaces).isEmpty {
             return nick.trimmingCharacters(in: .whitespaces)
         }
@@ -29,6 +36,15 @@ public struct DeviceModel: Identifiable, Codable, Hashable {
             return name.trimmingCharacters(in: .whitespaces)
         }
         return Constants.modelFriendlyNames[deviceClass] ?? Constants.modelFriendlyNames[model] ?? "DEEBOT"
+    }
+    
+    public func saveCustomName(_ newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            UserDefaults.standard.removeObject(forKey: "custom_robot_name_\(did)")
+        } else {
+            UserDefaults.standard.set(trimmed, forKey: "custom_robot_name_\(did)")
+        }
     }
     
     public var friendlyModelName: String {

@@ -4,6 +4,9 @@ public struct RobotControlView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var viewModel: RobotControlViewModel
     
+    @State private var showRenameAlert: Bool = false
+    @State private var newNameText: String = ""
+    
     public init(device: DeviceModel) {
         _viewModel = StateObject(wrappedValue: RobotControlViewModel(device: device))
     }
@@ -42,9 +45,20 @@ public struct RobotControlView: View {
                     Spacer()
                     
                     VStack(spacing: 2) {
-                        Text(viewModel.device.displayName)
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(.white)
+                        HStack(spacing: 6) {
+                            Text(viewModel.device.displayName)
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundColor(.white)
+                            
+                            Button(action: {
+                                newNameText = viewModel.device.displayName
+                                showRenameAlert = true
+                            }) {
+                                Image(systemName: "pencil.circle.fill")
+                                    .font(.system(size: 15))
+                                    .foregroundColor(.cyan.opacity(0.85))
+                            }
+                        }
                         
                         Text(viewModel.device.friendlyModelName)
                             .font(.system(size: 11))
@@ -152,6 +166,15 @@ public struct RobotControlView: View {
         }
         .onDisappear {
             viewModel.onDisappear()
+        }
+        .alert("Đổi tên Robot", isPresented: $showRenameAlert) {
+            TextField("Nhập tên mới", text: $newNameText)
+            Button("Lưu") {
+                viewModel.renameRobot(newName: newNameText)
+            }
+            Button("Hủy", role: .cancel) {}
+        } message: {
+            Text("Đặt tên gợi nhớ cho robot (VD: Robot Tầng 1, Deebot Phòng Khách).")
         }
     }
 }

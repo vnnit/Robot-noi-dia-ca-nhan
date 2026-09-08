@@ -19,26 +19,7 @@ public struct LoginView: View {
                     
                     // Logo & Tiêu đề
                     VStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color.cyan.opacity(0.3), Color.blue.opacity(0.1)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 90, height: 90)
-                                .overlay(
-                                    Circle()
-                                        .stroke(Color.cyan.opacity(0.5), lineWidth: 2)
-                                )
-                                .shadow(color: Color.cyan.opacity(0.3), radius: 15)
-                            
-                            Image(systemName: "fanblades.fill")
-                                .font(.system(size: 44))
-                                .foregroundColor(.cyan)
-                        }
+                        RobotAvatarView(isCleaning: true, size: 84)
                         
                         Text("Robot Nội Địa")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
@@ -65,7 +46,7 @@ public struct LoginView: View {
                                     .foregroundColor(.cyan)
                                     .frame(width: 24)
                                 
-                                TextField("Ví dụ: 16211077946", text: $viewModel.account)
+                                TextField("Nhập số điện thoại (ví dụ: 138xxxx...)", text: $viewModel.account)
                                     .foregroundColor(.white)
                                     .keyboardType(.numbersAndPunctuation)
                                     .autocapitalization(.none)

@@ -3,10 +3,15 @@ import SwiftUI
 public struct RobotCardView: View {
     public let device: DeviceModel
     public let onSelect: () -> Void
+    public var onRename: ((String) -> Void)? = nil
     
-    public init(device: DeviceModel, onSelect: @escaping () -> Void) {
+    @State private var showRenameAlert: Bool = false
+    @State private var newNameText: String = ""
+    
+    public init(device: DeviceModel, onSelect: @escaping () -> Void, onRename: ((String) -> Void)? = nil) {
         self.device = device
         self.onSelect = onSelect
+        self.onRename = onRename
     }
     
     private var isCleaning: Bool {
@@ -26,30 +31,29 @@ public struct RobotCardView: View {
     public var body: some View {
         Button(action: onSelect) {
             VStack(spacing: 16) {
-                // Hàng 1: Icon, Tên, Model & Trạng thái dọn dẹp
+                // Hàng 1: Icon Robot thật, Tên, Model & Nút đổi tên
                 HStack(spacing: 14) {
-                    // Robot Icon Avatar
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(isCleaning ? Color.cyan.opacity(0.2) : Color.white.opacity(0.08))
-                            .frame(width: 54, height: 54)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(isCleaning ? Color.cyan : Color.white.opacity(0.12), lineWidth: isCleaning ? 1.5 : 1)
-                            )
-                        
-                        Image(systemName: "fanblades.fill")
-                            .font(.system(size: 26))
-                            .foregroundColor(isCleaning ? .cyan : .white)
-                            .rotationEffect(Angle(degrees: isCleaning ? 360 : 0))
-                            .animation(isCleaning ? Animation.linear(duration: 3).repeatForever(autoreverses: false) : .default, value: isCleaning)
-                    }
+                    // Biểu tượng Robot Hút Bụi Laser LiDAR chuyên nghiệp
+                    RobotAvatarView(isCleaning: isCleaning, size: 52)
                     
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(device.displayName)
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(device.displayName)
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                            
+                            // Nút đổi tên Robot
+                            Button(action: {
+                                newNameText = device.displayName
+                                showRenameAlert = true
+                            }) {
+                                Image(systemName: "pencil.circle.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.cyan.opacity(0.85))
+                            }
+                            .buttonStyle(BorderlessButtonStyle())
+                        }
                         
                         Text(device.friendlyModelName)
                             .font(.system(size: 13, weight: .medium))
@@ -114,7 +118,15 @@ public struct RobotCardView: View {
                     .stroke(isCleaning ? Color.cyan : Color.white.opacity(0.08), lineWidth: isCleaning ? 2 : 1)
                     .shadow(color: isCleaning ? Color.cyan.opacity(0.5) : Color.clear, radius: 8)
             )
-        }
         .buttonStyle(PlainButtonStyle())
+        .alert("Đổi tên Robot", isPresented: $showRenameAlert) {
+            TextField("Nhập tên mới", text: $newNameText)
+            Button("Lưu") {
+                onRename?(newNameText)
+            }
+            Button("Hủy", role: .cancel) {}
+        } message: {
+            Text("Đặt tên gợi nhớ cho robot (VD: Robot Tầng 1, Deebot Phòng Khách).")
+        }
     }
 }

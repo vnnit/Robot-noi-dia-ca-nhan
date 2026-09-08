@@ -94,9 +94,11 @@ public struct RobotPickerView: View {
                     ScrollView {
                         LazyVStack(spacing: 14) {
                             ForEach(viewModel.devices) { dev in
-                                RobotCardView(device: dev) {
+                                RobotCardView(device: dev, onSelect: {
                                     appState.navigateToControl(device: dev)
-                                }
+                                }, onRename: { newName in
+                                    viewModel.renameRobot(did: dev.did, newName: newName)
+                                })
                             }
                         }
                         .padding(.horizontal, 20)

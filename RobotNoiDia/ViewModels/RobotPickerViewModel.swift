@@ -14,16 +14,21 @@ public final class RobotPickerViewModel: ObservableObject {
     public init() {}
     
     public func loadDevices(showLoading: Bool = true) {
-        if showLoading {
+        if showLoading && devices.isEmpty {
             isLoading = true
         }
         errorMessage = nil
         
         Task {
             do {
-                var fetched = try await deviceService.fetchDevices()
+                let fetched = try await deviceService.fetchDevices()
                 
-                // Nạp trạng thái thời gian thực cho từng robot song song
+                // Hiển thị danh sách robot ngay lập tức (siêu tốc < 0.3s)
+                self.devices = fetched
+                self.isLoading = false
+                self.isRefreshing = false
+                
+                // Nạp trạng thái pin & dọn dẹp chạy ngầm không chặn giao diện
                 await withTaskGroup(of: (Int, DeviceState).self) { group in
                     for (index, dev) in fetched.enumerated() {
                         group.addTask {
@@ -33,26 +38,32 @@ public final class RobotPickerViewModel: ObservableObject {
                     }
                     
                     for await (index, state) in group {
-                        if index < fetched.count {
-                            fetched[index].battery = state.batteryPercent
-                            fetched[index].isCharging = state.isCharging
-                            fetched[index].cleanState = state.cleanState
-                            fetched[index].cleanStateText = state.cleanStateText
+                        if index < self.devices.count {
+                            self.devices[index].battery = state.batteryPercent
+                            self.devices[index].isCharging = state.isCharging
+                            self.devices[index].cleanState = state.cleanState
+                            self.devices[index].cleanStateText = state.cleanStateText
                         }
                     }
                 }
                 
-                self.devices = fetched
-                self.isLoading = false
-                self.isRefreshing = false
-                
-                // Bắt đầu chu kỳ làm mới thẻ định kỳ 6 giây
+                // Bắt đầu chu kỳ làm mới thẻ định kỳ 8 giây
                 startAutoPolling()
             } catch {
                 self.isLoading = false
                 self.isRefreshing = false
                 self.errorMessage = error.localizedDescription
             }
+        }
+    }
+    
+    public func renameRobot(did: String, newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let idx = devices.firstIndex(where: { $0.did == did }) {
+            devices[idx].nick = trimmed.isEmpty ? nil : trimmed
+            devices[idx].saveCustomName(trimmed)
+            let updated = devices[idx]
+            devices[idx] = updated
         }
     }
     

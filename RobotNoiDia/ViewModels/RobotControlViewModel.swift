@@ -27,7 +27,7 @@ public enum ControlTab: String, CaseIterable, Identifiable {
 
 @MainActor
 public final class RobotControlViewModel: ObservableObject {
-    public let device: DeviceModel
+    @Published public var device: DeviceModel
     
     @Published public var state: DeviceState = .initial
     @Published public var consumables: ConsumablesData = .default
@@ -44,6 +44,15 @@ public final class RobotControlViewModel: ObservableObject {
     
     public init(device: DeviceModel) {
         self.device = device
+    }
+    
+    public func renameRobot(newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        device.nick = trimmed.isEmpty ? nil : trimmed
+        device.saveCustomName(trimmed)
+        let updated = device
+        self.device = updated
+        showToastMessage("Đã đổi tên robot thành: \(device.displayName)")
     }
     
     public func onAppear() {
