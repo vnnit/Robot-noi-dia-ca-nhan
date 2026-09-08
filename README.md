@@ -1,6 +1,8 @@
 # Robot Nội Địa (com.robot.noidia) - Ứng Dụng iOS Native
 
-Ứng dụng iOS thuần túy (**SwiftUI 5.0 / iOS 16.0+**) dành cho các dòng Robot hút bụi Ecovacs Deebot nội địa Trung Quốc (DEEBOT T10 TURBO, DEEBOT T9 AIVI, T8, T20, X1...).
+> 🎓 **TUYÊN BỐ DỰ ÁN (DISCLAIMER):**  
+> Đây là **dự án cá nhân phục vụ mục đích học tập, nghiên cứu kỹ thuật lập trình iOS (SwiftUI, MVVM) và tìm hiểu giao thức IoT/MQTT**.  
+> Dự án hoàn toàn phi thương mại, được phát triển nhằm mục đích tự học và ứng dụng quản lý thiết bị cá nhân trong gia đình. Tất cả bản quyền thương hiệu thuộc về nhà sản xuất Ecovacs Robotics.
 
 ---
 
@@ -117,3 +119,16 @@ RobotNoiDia/
         ├── StatusBadgeView.swift   # Huy hiệu trạng thái
         └── CustomToastView.swift   # Thông báo nổi (Toast)
 ```
+
+---
+
+## 🎓 Mục Đích Học Tập & Nghiên Cứu Kỹ Thuật
+
+Dự án này được tạo ra nhằm mục đích cá nhân để tự học và nghiên cứu các kỹ thuật sau:
+1. **SwiftUI & Modern Concurrency:** Áp dụng `async/await`, `Actor`, `@MainActor`, `ObservableObject` trong kiến trúc MVVM sạch.
+2. **Lập trình Mạng Cấp Thấp (Low-Level Networking):** Sử dụng `Network.framework` (`NWConnection`) để hiện thực giao thức MQTT 3.1.1 qua TLS Socket trực tiếp trên iOS.
+3. **Bảo Mật & Mật Mã:** Tận dụng Apple `CryptoKit` và thuật toán băm RFC 1321 để tạo chữ ký xác thực API (`authSign`), lưu trữ phiên vĩnh viễn với `Security.framework` (Keychain Services).
+4. **Tích hợp Tự động hóa CI/CD:** Thiết lập GitHub Actions với máy ảo macOS để tự động hóa quy trình đóng gói và phát hành ứng dụng iOS.
+
+> *Dự án mang tính chất chia sẻ kiến thức, tự học và phục vụ nhu cầu gia đình cá nhân.*
+
