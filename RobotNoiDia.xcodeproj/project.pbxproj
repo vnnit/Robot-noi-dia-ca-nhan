@@ -52,16 +52,16 @@
 		B10013 /* LoginViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginViewModel.swift; sourceTree = "<group>"; };
 		B10014 /* RobotPickerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RobotPickerViewModel.swift; sourceTree = "<group>"; };
 		B10015 /* RobotControlViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RobotControlViewModel.swift; sourceTree = "<group>"; };
-		B10016 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
-		B10017 /* RobotPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RobotPickerView.swift; sourceTree = "<group>"; };
-		B10018 /* RobotCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RobotCardView.swift; sourceTree = "<group>"; };
-		B10019 /* RobotControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RobotControlView.swift; sourceTree = "<group>"; };
-		B10020 /* ControlActionBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlActionBar.swift; sourceTree = "<group>"; };
-		B10021 /* SettingsTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTabView.swift; sourceTree = "<group>"; };
-		B10022 /* ConsumablesTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsumablesTabView.swift; sourceTree = "<group>"; };
-		B10023 /* MapTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapTabView.swift; sourceTree = "<group>"; };
-		B10024 /* SVGWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SVGWebView.swift; sourceTree = "<group>"; };
-		B10025 /* StatusBadgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBadgeView.swift; sourceTree = "<group>"; };
+		B10016 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Login/LoginView.swift"; sourceTree = "<group>"; };
+		B10017 /* RobotPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Picker/RobotPickerView.swift"; sourceTree = "<group>"; };
+		B10018 /* RobotCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Picker/RobotCardView.swift"; sourceTree = "<group>"; };
+		B10019 /* RobotControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Control/RobotControlView.swift"; sourceTree = "<group>"; };
+		B10020 /* ControlActionBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Control/ControlActionBar.swift"; sourceTree = "<group>"; };
+		B10021 /* SettingsTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Control/SettingsTabView.swift"; sourceTree = "<group>"; };
+		B10022 /* ConsumablesTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Control/ConsumablesTabView.swift"; sourceTree = "<group>"; };
+		B10023 /* MapTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Control/MapTabView.swift"; sourceTree = "<group>"; };
+		B10024 /* SVGWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Components/SVGWebView.swift"; sourceTree = "<group>"; };
+		B10025 /* StatusBadgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Components/StatusBadgeView.swift"; sourceTree = "<group>"; };
 		B10026 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B10027 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
