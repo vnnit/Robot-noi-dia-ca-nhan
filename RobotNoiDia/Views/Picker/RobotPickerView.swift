@@ -187,12 +187,8 @@ public struct RobotPickerView: View {
                                 appState.navigateToControl(device: dev)
                             }) {
                                 VStack(spacing: 0) {
-                                    RobotStationHeroView(
-                                        modelName: dev.friendlyModelName,
-                                        isCleaning: dev.isCleaning,
-                                        isDarkModel: dev.isDarkModel
-                                    )
-                                    .padding(.top, 10)
+                                    RobotHeroImageView(device: dev)
+                                        .padding(.top, 10)
                                 }
                             }
                             .buttonStyle(PlainButtonStyle())

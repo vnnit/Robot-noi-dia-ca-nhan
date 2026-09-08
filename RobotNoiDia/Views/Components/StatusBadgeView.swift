@@ -459,4 +459,107 @@ public struct RobotStationHeroView: View {
     }
 }
 
+/// Hiển thị hình ảnh Robot lớn ở màn hình chọn Robot (RobotPickerView)
+/// Tự động nạp ảnh PNG chính hãng từ Ecovacs PIM server qua AsyncImage, kèm bóng đổ sàn nhà.
+/// Nếu đang tải hoặc mất mạng, tự động fallback sang mô phỏng RobotStationHeroView.
+public struct RobotHeroImageView: View {
+    public let device: DeviceModel
+    
+    public init(device: DeviceModel) {
+        self.device = device
+    }
+    
+    public var body: some View {
+        ZStack {
+            // Bóng đổ sàn nhà (Floor shadow)
+            Ellipse()
+                .fill(Color.black.opacity(device.isDarkModel ? 0.16 : 0.12))
+                .frame(width: 260, height: 38)
+                .blur(radius: 12)
+                .offset(y: 112)
+            
+            if let iconUrl = device.resolvedIconUrl {
+                AsyncImage(url: iconUrl) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: 245)
+                            .shadow(color: Color.black.opacity(0.15), radius: 12, x: 0, y: 8)
+                    case .failure, .empty:
+                        RobotStationHeroView(
+                            modelName: device.friendlyModelName,
+                            isCleaning: device.isCleaning,
+                            isDarkModel: device.isDarkModel
+                        )
+                    @unknown default:
+                        RobotStationHeroView(
+                            modelName: device.friendlyModelName,
+                            isCleaning: device.isCleaning,
+                            isDarkModel: device.isDarkModel
+                        )
+                    }
+                }
+            } else {
+                RobotStationHeroView(
+                    modelName: device.friendlyModelName,
+                    isCleaning: device.isCleaning,
+                    isDarkModel: device.isDarkModel
+                )
+            }
+        }
+        .frame(height: 270)
+    }
+}
+
+/// Thumbnail icon robot tròn hoặc vuông bo góc cho danh sách RobotCardView / Header
+public struct RobotIconThumbnailView: View {
+    public let device: DeviceModel
+    public var size: CGFloat = 52
+    
+    public init(device: DeviceModel, size: CGFloat = 52) {
+        self.device = device
+        self.size = size
+    }
+    
+    public var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.28)
+                .fill(Color(red: 0.12, green: 0.15, blue: 0.22))
+                .overlay(
+                    RoundedRectangle(cornerRadius: size * 0.28)
+                        .stroke(device.isCleaning ? Color.cyan : Color.white.opacity(0.12), lineWidth: device.isCleaning ? 1.5 : 1)
+                )
+            
+            if let iconUrl = device.resolvedIconUrl {
+                AsyncImage(url: iconUrl) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .padding(size * 0.1)
+                    case .failure, .empty:
+                        RobotAvatarView(isCleaning: device.isCleaning, isDarkModel: device.isDarkModel, size: size * 0.78)
+                    @unknown default:
+                        RobotAvatarView(isCleaning: device.isCleaning, isDarkModel: device.isDarkModel, size: size * 0.78)
+                    }
+                }
+            } else {
+                RobotAvatarView(isCleaning: device.isCleaning, isDarkModel: device.isDarkModel, size: size * 0.78)
+            }
+            
+            if device.isCleaning {
+                Circle()
+                    .fill(Color.cyan)
+                    .frame(width: size * 0.2, height: size * 0.2)
+                    .overlay(Circle().stroke(Color.black, lineWidth: 1.5))
+                    .offset(x: size * 0.36, y: -size * 0.36)
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
 

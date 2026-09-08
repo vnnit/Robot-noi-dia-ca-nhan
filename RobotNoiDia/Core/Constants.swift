@@ -57,6 +57,15 @@ public enum Constants {
         "u1a3b5": "DEEBOT X1 OMNI"
     ]
     
+    // MARK: - Official Ecovacs Robot Image URLs (PIM Cloud Storage)
+    public static let modelIconUrls: [String: String] = [
+        "CURIE_ACS_L": "https://api-app.dc-cn.cn.ecouser.net/api/pim/file/get/628465d99475a40009ed9f03",
+        "m2sj78": "https://api-app.dc-cn.cn.ecouser.net/api/pim/file/get/628465d99475a40009ed9f03",
+        "T9_AIVI_AF": "https://api-app.dc-cn.cn.ecouser.net/api/pim/file/get/603f50488da56e0008ce7cb7",
+        "8kwdb4": "https://api-app.dc-cn.cn.ecouser.net/api/pim/file/get/603f50488da56e0008ce7cb7",
+        "yna5xi": "https://api-app.dc-cn.cn.ecouser.net/api/pim/file/get/603f50488da56e0008ce7cb7"
+    ]
+    
     // MARK: - Error Code Descriptions (Vietnamese)
     public static let errorDescriptions: [Int: String] = [
         0: "Robot hoạt động bình thường",

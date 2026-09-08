@@ -33,8 +33,8 @@ public struct RobotCardView: View {
             VStack(spacing: 16) {
                 // Hàng 1: Icon Robot thật, Tên, Model & Nút đổi tên
                 HStack(spacing: 14) {
-                    // Biểu tượng Robot Hút Bụi Laser LiDAR chuyên nghiệp
-                    RobotAvatarView(isCleaning: isCleaning, isDarkModel: device.isDarkModel, size: 52)
+                    // Biểu tượng Robot Hút Bụi Laser LiDAR / Ảnh PNG chính hãng Ecovacs
+                    RobotIconThumbnailView(device: device, size: 52)
                     
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {

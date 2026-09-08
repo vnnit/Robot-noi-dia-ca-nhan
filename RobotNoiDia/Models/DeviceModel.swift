@@ -70,6 +70,32 @@ public struct DeviceModel: Identifiable, Codable, Hashable {
         return "DEEBOT"
     }
     
+    /// Đường dẫn ảnh icon chính hãng từ Ecovacs PIM Server
+    public var resolvedIconUrl: URL? {
+        if let icon = icon, !icon.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let trimmed = icon.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
+                return URL(string: trimmed)
+            } else {
+                return URL(string: "https://api-app.dc-cn.cn.ecouser.net/api/pim/file/get/\(trimmed)")
+            }
+        }
+        
+        // Fallback theo deviceClass hoặc model name
+        if let fallbackStr = Constants.modelIconUrls[deviceClass] ?? Constants.modelIconUrls[model] {
+            return URL(string: fallbackStr)
+        }
+        
+        let combined = (model + " " + deviceClass).lowercased()
+        if combined.contains("t10") {
+            return URL(string: "https://api-app.dc-cn.cn.ecouser.net/api/pim/file/get/628465d99475a40009ed9f03")
+        } else if combined.contains("t9") {
+            return URL(string: "https://api-app.dc-cn.cn.ecouser.net/api/pim/file/get/603f50488da56e0008ce7cb7")
+        }
+        
+        return nil
+    }
+    
     public var debugJsonFormatted: String {
         let dict: [String: Any] = [
             "did": did,
