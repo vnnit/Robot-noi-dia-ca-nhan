@@ -4,6 +4,10 @@ import SwiftUI
 struct RobotNoiDiaApp: App {
     @StateObject private var appState = AppState()
     
+    init() {
+        NotificationManager.shared.requestPermission()
+    }
+    
     var body: some Scene {
         WindowGroup {
             Group {

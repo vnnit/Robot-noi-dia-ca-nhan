@@ -183,6 +183,53 @@ public struct SettingsTabView: View {
                         .cornerRadius(14)
                         .padding(.horizontal, 16)
                         
+                        // Nhóm: Thông báo trạng thái iOS (Local Notifications)
+                        VStack(spacing: 0) {
+                            HStack(spacing: 14) {
+                                Image(systemName: "bell.badge.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                                    .frame(width: 24)
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Thông báo trạng thái Robot")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(Color(white: 0.15))
+                                    Text("Chuông & banner khi dọn xong, về sạc hoặc báo lỗi")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.gray)
+                                }
+                                
+                                Spacer()
+                                
+                                Toggle("", isOn: Binding(
+                                    get: { NotificationManager.shared.isEnabled },
+                                    set: { NotificationManager.shared.isEnabled = $0 }
+                                ))
+                                .labelsHidden()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            
+                            Divider().padding(.leading, 50)
+                            
+                            Button(action: {
+                                NotificationManager.shared.sendTestNotification()
+                                viewModel.toastMessage = "Đã gửi thông báo thử nghiệm!"
+                                viewModel.showToast = true
+                            }) {
+                                settingItemRow(
+                                    icon: "paperplane.fill",
+                                    iconColor: Color.teal,
+                                    title: "Gửi thông báo thử nghiệm",
+                                    detail: "Kiểm tra chuông & banner thông báo ngay trên máy"
+                                )
+                            }
+                        }
+                        .background(Color.white)
+                        .cornerRadius(14)
+                        .padding(.horizontal, 16)
+                        
                         // Nhóm 4: Thông tin thiết bị & Trạm
                         VStack(spacing: 0) {
                             Button(action: { showAboutRobotSheet = true }) {

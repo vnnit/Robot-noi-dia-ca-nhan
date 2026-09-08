@@ -90,6 +90,12 @@ public final class RobotPickerViewModel: ObservableObject {
                         if let c = qs.isCharging { self.devices[index].isCharging = c }
                         if let s = qs.cleanState { self.devices[index].cleanState = s }
                         if let t = qs.cleanStateText { self.devices[index].cleanStateText = t }
+                        NotificationManager.shared.notifyQuickStatusChange(
+                            device: dev,
+                            battery: qs.battery,
+                            isCharging: qs.isCharging,
+                            cleanState: qs.cleanState
+                        )
                     }
                 }
                 self.deviceService.saveCachedDevices(self.devices)

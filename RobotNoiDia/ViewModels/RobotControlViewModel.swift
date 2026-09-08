@@ -85,6 +85,7 @@ public final class RobotControlViewModel: ObservableObject {
     public func refreshState() async {
         let newState = await deviceService.getDeviceState(device: device)
         self.state = newState
+        NotificationManager.shared.notifyStateChange(device: device, state: newState)
     }
     
     private func startStatePolling() {

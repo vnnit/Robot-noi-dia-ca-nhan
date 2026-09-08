@@ -33,6 +33,7 @@
 		A10024 /* SVGWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10024 /* SVGWebView.swift */; };
 		A10025 /* StatusBadgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10025 /* StatusBadgeView.swift */; };
 		A10026 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B10026 /* Assets.xcassets */; };
+		A10027 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10028 /* NotificationManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -64,6 +65,7 @@
 		B10025 /* StatusBadgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Components/StatusBadgeView.swift"; sourceTree = "<group>"; };
 		B10026 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B10027 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B10028 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -143,6 +145,7 @@
 				B10010 /* EcovacsAuthService.swift */,
 				B10011 /* EcovacsDeviceService.swift */,
 				B10012 /* EcovacsMQTTService.swift */,
+				B10028 /* NotificationManager.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -277,6 +280,7 @@
 				A10023 /* MapTabView.swift in Sources */,
 				A10024 /* SVGWebView.swift in Sources */,
 				A10025 /* StatusBadgeView.swift in Sources */,
+				A10027 /* NotificationManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
