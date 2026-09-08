@@ -53,35 +53,6 @@ public struct LoginView: View {
                     
                     // Form đăng nhập
                     VStack(spacing: 16) {
-                        // Chọn khu vực (Mặc định Trung Quốc)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Khu vực máy chủ")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.gray)
-                            
-                            HStack {
-                                Image(systemName: "globe.asia.australia.fill")
-                                    .foregroundColor(.cyan)
-                                    .frame(width: 24)
-                                
-                                Picker("Khu vực", selection: $viewModel.country) {
-                                    Text("Trung Quốc (Nội địa - CN)").tag("CN")
-                                    Text("Toàn cầu (Quốc tế - WW)").tag("WW")
-                                }
-                                .pickerStyle(.menu)
-                                .tint(.white)
-                                
-                                Spacer()
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .background(Color.white.opacity(0.06))
-                            .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                            )
-                        }
                         
                         // Tài khoản / Số điện thoại
                         VStack(alignment: .leading, spacing: 6) {
