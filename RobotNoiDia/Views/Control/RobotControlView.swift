@@ -464,24 +464,7 @@ public struct RobotControlView: View {
                                     .cornerRadius(10)
                                 }
                                 
-                                // 8. Nút Debug JSON Thiết bị
-                                Button(action: {
-                                    showDebugJsonSheet = true
-                                }) {
-                                    HStack {
-                                        Image(systemName: "curlybraces")
-                                            .font(.system(size: 14))
-                                        Text("Xem JSON Debug Thiết bị")
-                                            .font(.system(size: 14, weight: .semibold))
-                                    }
-                                    .foregroundColor(Color(white: 0.4))
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 40)
-                                    .background(Color(white: 0.95))
-                                    .cornerRadius(10)
-                                }
-                                
-                                // 9. Nút Cài đặt nâng cao > (Mở Hình 5)
+                                // 8. Nút Cài đặt nâng cao > (Mở Hình 5)
                                 Button(action: {
                                     viewModel.showMoreSettings = true
                                 }) {
