@@ -31,7 +31,7 @@ public enum Constants {
         }
     }
     
-    public static let mqttBrokerHost = "iot-cn.ecovacs.com"
+    public static let mqttBrokerHost = "jmq-ngiot-cn.dc.cn.ecouser.net"
     public static let mqttBrokerPort: UInt16 = 8883
     
     // MARK: - Friendly Model Names

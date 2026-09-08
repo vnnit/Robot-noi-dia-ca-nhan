@@ -53,6 +53,57 @@ public final class RobotControlViewModel: ObservableObject {
     
     public init(device: DeviceModel) {
         self.device = device
+        setupMqttListener()
+    }
+    
+    private func setupMqttListener() {
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("EcovacsRobotEventReceived"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notif in
+            guard let self = self,
+                  let userInfo = notif.userInfo,
+                  let topic = userInfo["topic"] as? String,
+                  let data = userInfo["data"] as? [String: Any] else { return }
+            
+            if topic.contains(self.device.did) {
+                self.processLiveMqttEvent(topic: topic, data: data)
+            }
+        }
+    }
+    
+    private func processLiveMqttEvent(topic: String, data: [String: Any]) {
+        if topic.contains("onBattery") || topic.contains("getBattery") {
+            if let val = data["value"] as? Int { self.state.batteryPercent = val }
+            if let low = data["isLow"] as? Bool { self.state.isLowBattery = low }
+        } else if topic.contains("onCleanInfo") || topic.contains("getCleanInfo") {
+            if let st = data["state"] as? String {
+                self.state.cleanState = st
+                switch st {
+                case "clean": self.state.cleanStateText = "Đang dọn dẹp"
+                case "pause": self.state.cleanStateText = "Đang tạm dừng"
+                case "stop": self.state.cleanStateText = "Đã dừng dọn"
+                case "go_charging": self.state.cleanStateText = "Đang về trạm sạc"
+                case "charging":
+                    self.state.cleanStateText = "Đang sạc pin"
+                    self.state.isCharging = true
+                case "error": self.state.cleanStateText = "Báo lỗi"
+                default:
+                    self.state.cleanStateText = self.state.isCharging ? "Đang sạc pin tại trạm" : "Nghỉ ngơi / Chờ lệnh"
+                }
+            }
+        } else if topic.contains("onChargeState") || topic.contains("getChargeState") {
+            if let ch = data["isCharging"] as? Bool { self.state.isCharging = ch }
+            if let m = data["mode"] as? String { self.state.chargeMode = m }
+            self.state.chargeText = self.state.isCharging ? "Đang sạc pin tại trạm" : "Đang sử dụng pin"
+        } else if topic.contains("onError") || topic.contains("getError") {
+            if let code = data["code"] as? Int {
+                self.state.errorCode = code
+                self.state.errorText = Constants.errorDescriptions[code] ?? "Mã lỗi #\(code)"
+            }
+        }
+        NotificationManager.shared.notifyStateChange(device: self.device, state: self.state)
     }
     
     public func renameRobot(newName: String) {
@@ -65,6 +116,11 @@ public final class RobotControlViewModel: ObservableObject {
     }
     
     public func onAppear() {
+        // 1. Kích hoạt Socket MQTT lắng nghe trực tiếp sự kiện thời gian thực
+        EcovacsMQTTService.shared.connectWithSavedCredentials()
+        EcovacsMQTTService.shared.subscribeToDevice(device: device)
+        
+        // 2. Tải toàn bộ trạng thái ban đầu
         refreshAll()
         startStatePolling()
     }
@@ -75,24 +131,25 @@ public final class RobotControlViewModel: ObservableObject {
     
     public func refreshAll() {
         Task {
-            await refreshState()
+            await refreshState(full: true)
             await refreshConsumables()
             await refreshMap()
         }
     }
     
-    // MARK: - State Polling
-    public func refreshState() async {
-        let newState = await deviceService.getDeviceState(device: device)
+    // MARK: - State Polling (Chạy ngầm dự phòng)
+    public func refreshState(full: Bool = false) async {
+        let newState = await deviceService.getDeviceState(device: device, full: full, existingState: self.state)
         self.state = newState
         NotificationManager.shared.notifyStateChange(device: device, state: newState)
     }
     
     private func startStatePolling() {
         stopStatePolling()
-        statePollTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { [weak self] _ in
+        // Chu kỳ 6 giây thăm dò nhẹ (chỉ 2 lệnh pin & dọn dẹp) để tránh nghẽn mạng
+        statePollTimer = Timer.scheduledTimer(withTimeInterval: 6.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                await self?.refreshState()
+                await self?.refreshState(full: false)
             }
         }
     }

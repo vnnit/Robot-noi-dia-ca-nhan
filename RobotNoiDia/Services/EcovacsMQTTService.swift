@@ -18,6 +18,13 @@ public final class EcovacsMQTTService: ObservableObject {
     
     private init() {}
     
+    // MARK: - Tự động kết nối bằng thông tin đã lưu
+    public func connectWithSavedCredentials() {
+        let km = KeychainManager.shared
+        guard let uid = km.userId, let tok = km.token, !uid.isEmpty, !tok.isEmpty else { return }
+        connect(userId: uid, token: tok, deviceId: km.deviceId)
+    }
+    
     // MARK: - Kết nối MQTT qua TLS
     public func connect(userId: String, token: String, deviceId: String) {
         guard !isConnected && !isConnecting else { return }
@@ -30,7 +37,7 @@ public final class EcovacsMQTTService: ObservableObject {
         
         let tlsOptions = NWProtocolTLS.Options()
         sec_protocol_options_set_verify_block(tlsOptions.securityProtocolOptions, { (_, _, sec_protocol_verify_complete) in
-            sec_protocol_verify_complete(true) // Cho phép TLS self-signed hoặc chứng chỉ nội địa
+            sec_protocol_verify_complete(true) // Cho phép chứng chỉ nội địa Ecovacs
         }, queue)
         
         let tcpOptions = NWProtocolTCP.Options()
@@ -45,6 +52,7 @@ public final class EcovacsMQTTService: ObservableObject {
             guard let self = self else { return }
             switch state {
             case .ready:
+                print("[MQTT] Đã thiết lập kết nối TCP/TLS tới \(Constants.mqttBrokerHost)")
                 self.sendConnectPacket(userId: userId, token: token, deviceId: deviceId)
                 self.startReceiving()
             case .failed(let err):
@@ -71,13 +79,24 @@ public final class EcovacsMQTTService: ObservableObject {
     
     // MARK: - Subscribe vào thiết bị
     public func subscribeToDevice(device: DeviceModel) {
+        guard isConnected else {
+            // Nếu chưa kết nối, kết nối ngay rồi subscribe sau
+            connectWithSavedCredentials()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.subscribeToDevice(device: device)
+            }
+            return
+        }
+        
         let topics = [
             "iot/atr/+/\(device.did)/\(device.deviceClass)/\(device.resource)/j",
+            "iot/atr/+/\(device.did)/+/+/j",
             "iot/p2p/+/\(device.did)/\(device.deviceClass)/\(device.resource)/+/+/+/p/+/j"
         ]
         for topic in topics {
             sendSubscribePacket(topic: topic)
         }
+        print("[MQTT] Đã đăng ký lắng nghe sự kiện của Robot: \(device.displayName)")
     }
     
     // MARK: - Packet Builders (MQTT 3.1.1)
@@ -152,7 +171,10 @@ public final class EcovacsMQTTService: ObservableObject {
         switch packetType {
         case 2: // CONNACK
             if data.count >= 4 && data[3] == 0 {
-                DispatchQueue.main.async { self.isConnected = true }
+                DispatchQueue.main.async {
+                    self.isConnected = true
+                    print("[MQTT] Xác thực thành công với Broker! Sẵn sàng nhận dữ liệu trực tiếp.")
+                }
                 self.isConnecting = false
                 // Bắt đầu gửi keep-alive ping mỗi 30s
                 DispatchQueue.main.async {
@@ -163,22 +185,62 @@ public final class EcovacsMQTTService: ObservableObject {
                 }
             }
         case 3: // PUBLISH
-            // Phân tích topic và payload
-            if data.count > 4 {
-                let topicLen = Int(data[2]) << 8 | Int(data[3])
-                if data.count >= 4 + topicLen {
-                    let topicData = data.subdata(in: 4..<(4 + topicLen))
+            var offset = 1
+            var multiplier = 1
+            var remainingLength = 0
+            while offset < data.count {
+                let digit = Int(data[offset])
+                remainingLength += (digit & 0x7F) * multiplier
+                multiplier *= 128
+                offset += 1
+                if (digit & 0x80) == 0 { break }
+            }
+            
+            if offset + 2 <= data.count {
+                let topicLen = Int(data[offset]) << 8 | Int(data[offset + 1])
+                offset += 2
+                if offset + topicLen <= data.count {
+                    let topicData = data.subdata(in: offset..<(offset + topicLen))
                     let topic = String(data: topicData, encoding: .utf8) ?? ""
-                    let payloadData = data.subdata(in: (4 + topicLen)..<data.count)
-                    DispatchQueue.main.async {
-                        self.lastMessageTopic = topic
-                        self.onMessageReceived?(topic, payloadData)
+                    offset += topicLen
+                    
+                    let qos = (firstByte >> 1) & 0x03
+                    if qos > 0 {
+                        offset += 2
+                    }
+                    
+                    if offset <= data.count {
+                        let payloadData = data.subdata(in: offset..<data.count)
+                        DispatchQueue.main.async {
+                            self.lastMessageTopic = topic
+                            self.onMessageReceived?(topic, payloadData)
+                            self.handleRobotEvent(topic: topic, payload: payloadData)
+                        }
                     }
                 }
             }
         default:
             break
         }
+    }
+    
+    private func handleRobotEvent(topic: String, payload: Data) {
+        guard let json = (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any] else { return }
+        var bodyData: [String: Any] = [:]
+        if let body = json["body"] as? [String: Any], let d = body["data"] as? [String: Any] {
+            bodyData = d
+        } else if let d = json["data"] as? [String: Any] {
+            bodyData = d
+        }
+        
+        NotificationCenter.default.post(
+            name: NSNotification.Name("EcovacsRobotEventReceived"),
+            object: nil,
+            userInfo: [
+                "topic": topic,
+                "data": bodyData
+            ]
+        )
     }
     
     // MARK: - MQTT Encoding Utilities

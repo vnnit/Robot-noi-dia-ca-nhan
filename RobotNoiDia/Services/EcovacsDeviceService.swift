@@ -226,7 +226,7 @@ public final class EcovacsDeviceService {
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = 3.5
+        request.timeoutInterval = 10.0
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Eco-Iot-Direct", forHTTPHeaderField: "User-Agent")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -269,34 +269,23 @@ public final class EcovacsDeviceService {
         return (battery, isCharging, cleanState, cleanStateText)
     }
     
-    // MARK: - 3. Lấy Trạng thái Thời gian thực Đầy đủ (Full Live State)
-    public func getDeviceState(device: DeviceModel) async -> DeviceState {
-        var state = DeviceState.initial
+    // MARK: - 3. Lấy Trạng thái Thời gian thực (Live State)
+    public func getDeviceState(device: DeviceModel, full: Bool = false, existingState: DeviceState? = nil) async -> DeviceState {
+        var state = existingState ?? DeviceState.initial
         
         async let battRes = try? executeCommand(device: device, cmdName: "getBattery")
         async let cleanRes = try? executeCommand(device: device, cmdName: "getCleanInfo")
-        async let chargeRes = try? executeCommand(device: device, cmdName: "getChargeState")
-        async let speedRes = try? executeCommand(device: device, cmdName: "getSpeed")
-        async let waterRes = try? executeCommand(device: device, cmdName: "getWaterInfo")
-        async let errRes = try? executeCommand(device: device, cmdName: "getError")
         
-        let results = await (battRes, cleanRes, chargeRes, speedRes, waterRes, errRes)
+        let (batt, clean) = await (battRes, cleanRes)
         
         // Pin
-        if let b = results.0, let body = extractBodyData(b) {
+        if let b = batt, let body = extractBodyData(b) {
             if let val = body["value"] as? Int { state.batteryPercent = val }
             if let low = body["isLow"] as? Bool { state.isLowBattery = low }
         }
         
-        // Sạc
-        if let c = results.2, let body = extractBodyData(c) {
-            if let ch = body["isCharging"] as? Bool { state.isCharging = ch }
-            if let m = body["mode"] as? String { state.chargeMode = m }
-            state.chargeText = state.isCharging ? "Đang sạc pin tại trạm" : "Đang sử dụng pin"
-        }
-        
-        // Dọn dẹp
-        if let cl = results.1, let body = extractBodyData(cl) {
+        // Dọn dẹp & Sạc
+        if let cl = clean, let body = extractBodyData(cl) {
             if let st = body["state"] as? String {
                 state.cleanState = st
                 switch st {
@@ -304,7 +293,9 @@ public final class EcovacsDeviceService {
                 case "pause": state.cleanStateText = "Đang tạm dừng"
                 case "stop": state.cleanStateText = "Đã dừng dọn"
                 case "go_charging": state.cleanStateText = "Đang về trạm sạc"
-                case "charging": state.cleanStateText = "Đang sạc pin"
+                case "charging":
+                    state.cleanStateText = "Đang sạc pin"
+                    state.isCharging = true
                 case "error": state.cleanStateText = "Báo lỗi"
                 default:
                     state.cleanStateText = state.isCharging ? "Đang sạc pin tại trạm" : "Nghỉ ngơi / Chờ lệnh"
@@ -313,19 +304,31 @@ public final class EcovacsDeviceService {
             if let tr = body["trigger"] as? String { state.cleanTrigger = tr }
         }
         
-        // Lực hút & Nước
-        if let sp = results.3, let body = extractBodyData(sp) {
-            if let s = body["speed"] as? String { state.fanSpeed = s }
-        }
-        if let wt = results.4, let body = extractBodyData(wt) {
-            if let a = body["amount"] as? Int { state.waterAmount = a }
-        }
-        
-        // Mã lỗi
-        if let er = results.5, let body = extractBodyData(er) {
-            if let code = body["code"] as? Int {
-                state.errorCode = code
-                state.errorText = Constants.errorDescriptions[code] ?? "Mã lỗi #\(code)"
+        // Chỉ lấy thêm thông số chuyên sâu khi full == true (tránh dồn dập 6 request gây nghẽn gateway)
+        if full {
+            async let chargeRes = try? executeCommand(device: device, cmdName: "getChargeState")
+            async let speedRes = try? executeCommand(device: device, cmdName: "getSpeed")
+            async let waterRes = try? executeCommand(device: device, cmdName: "getWaterInfo")
+            async let errRes = try? executeCommand(device: device, cmdName: "getError")
+            
+            let extra = await (chargeRes, speedRes, waterRes, errRes)
+            
+            if let c = extra.0, let body = extractBodyData(c) {
+                if let ch = body["isCharging"] as? Bool { state.isCharging = ch }
+                if let m = body["mode"] as? String { state.chargeMode = m }
+                state.chargeText = state.isCharging ? "Đang sạc pin tại trạm" : "Đang sử dụng pin"
+            }
+            if let sp = extra.1, let body = extractBodyData(sp) {
+                if let s = body["speed"] as? String { state.fanSpeed = s }
+            }
+            if let wt = extra.2, let body = extractBodyData(wt) {
+                if let a = body["amount"] as? Int { state.waterAmount = a }
+            }
+            if let er = extra.3, let body = extractBodyData(er) {
+                if let code = body["code"] as? Int {
+                    state.errorCode = code
+                    state.errorText = Constants.errorDescriptions[code] ?? "Mã lỗi #\(code)"
+                }
             }
         }
         
