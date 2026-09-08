@@ -96,6 +96,18 @@ public struct DeviceModel: Identifiable, Codable, Hashable {
         return nil
     }
     
+    /// Tên ảnh sản phẩm chính hãng được đóng gói sẵn trong App (nạp ngay lập tức 0ms, không độ trễ)
+    public var localAssetName: String? {
+        let text = (friendlyModelName + " " + model + " " + deviceClass).lowercased()
+        if text.contains("t9") || text.contains("8kwdb4") {
+            return "robot_t9_aivi"
+        }
+        if text.contains("t10") || text.contains("m2sj78") || text.contains("curie") {
+            return "robot_t10_turbo"
+        }
+        return nil
+    }
+    
     public var debugJsonFormatted: String {
         let dict: [String: Any] = [
             "did": did,

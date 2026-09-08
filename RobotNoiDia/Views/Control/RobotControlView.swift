@@ -179,16 +179,7 @@ public struct RobotControlView: View {
                     // Tên Robot & Pin
                     VStack(spacing: 3) {
                         HStack(spacing: 6) {
-                            if let iconUrl = viewModel.device.resolvedIconUrl {
-                                AsyncImage(url: iconUrl) { phase in
-                                    if let img = phase.image {
-                                        img
-                                            .resizable()
-                                            .scaledToFit()
-                                            .frame(width: 22, height: 22)
-                                    }
-                                }
-                            }
+                            RobotIconThumbnailView(device: viewModel.device, size: 24)
                             
                             Text(viewModel.device.displayName)
                                 .font(.system(size: 17, weight: .bold))

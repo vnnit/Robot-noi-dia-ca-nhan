@@ -459,11 +459,61 @@ public struct RobotStationHeroView: View {
     }
 }
 
+/// Quản lý bộ nhớ đệm hình ảnh (Memory Cache & Disk Cache) cho ảnh Robot
+public final class RobotImageCacheManager {
+    public static let shared = RobotImageCacheManager()
+    
+    private let memoryCache = NSCache<NSString, UIImage>()
+    private let fileManager = FileManager.default
+    private let diskCacheUrl: URL
+    
+    private init() {
+        memoryCache.countLimit = 50
+        memoryCache.totalCostLimit = 40 * 1024 * 1024 // 40MB
+        
+        let paths = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)
+        diskCacheUrl = paths[0].appendingPathComponent("EcovacsRobotImages", isDirectory: true)
+        if !fileManager.fileExists(atPath: diskCacheUrl.path) {
+            try? fileManager.createDirectory(at: diskCacheUrl, withIntermediateDirectories: true)
+        }
+    }
+    
+    private func cacheKey(for url: URL) -> String {
+        return url.absoluteString.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "\(url.hashValue)"
+    }
+    
+    public func image(for url: URL) -> UIImage? {
+        let key = cacheKey(for: url) as NSString
+        // 1. Kiểm tra RAM Cache (0ms)
+        if let memImg = memoryCache.object(forKey: key) {
+            return memImg
+        }
+        // 2. Kiểm tra Disk Cache (<1ms)
+        let filePath = diskCacheUrl.appendingPathComponent(key as String).path
+        if fileManager.fileExists(atPath: filePath),
+           let data = try? Data(contentsOf: URL(fileURLWithPath: filePath)),
+           let diskImg = UIImage(data: data) {
+            memoryCache.setObject(diskImg, forKey: key)
+            return diskImg
+        }
+        return nil
+    }
+    
+    public func save(image: UIImage, data: Data, for url: URL) {
+        let key = cacheKey(for: url) as NSString
+        memoryCache.setObject(image, forKey: key)
+        let fileUrl = diskCacheUrl.appendingPathComponent(key as String)
+        try? data.write(to: fileUrl)
+    }
+}
+
 /// Hiển thị hình ảnh Robot lớn ở màn hình chọn Robot (RobotPickerView)
-/// Tự động nạp ảnh PNG chính hãng từ Ecovacs PIM server qua AsyncImage, kèm bóng đổ sàn nhà.
-/// Nếu đang tải hoặc mất mạng, tự động fallback sang mô phỏng RobotStationHeroView.
+/// Nạp tức thì (0ms) từ App Assets hoặc Disk/Memory Cache, loại bỏ hoàn toàn độ trễ 5s
 public struct RobotHeroImageView: View {
     public let device: DeviceModel
+    
+    @State private var remoteImage: UIImage? = nil
+    @State private var isLoading: Bool = false
     
     public init(device: DeviceModel) {
         self.device = device
@@ -478,22 +528,28 @@ public struct RobotHeroImageView: View {
                 .blur(radius: 12)
                 .offset(y: 112)
             
-            if let iconUrl = device.resolvedIconUrl {
-                AsyncImage(url: iconUrl) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .frame(height: 245)
-                            .shadow(color: Color.black.opacity(0.15), radius: 12, x: 0, y: 8)
-                    case .failure, .empty:
-                        RobotStationHeroView(
-                            modelName: device.friendlyModelName,
-                            isCleaning: device.isCleaning,
-                            isDarkModel: device.isDarkModel
-                        )
-                    @unknown default:
+            // 1. Ưu tiên số 1: Ảnh gốc đóng gói sẵn trong App Assets (0ms, tức thì)
+            if let assetName = device.localAssetName, let assetImg = UIImage(named: assetName) {
+                Image(uiImage: assetImg)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 245)
+                    .shadow(color: Color.black.opacity(0.15), radius: 12, x: 0, y: 8)
+            } else if let img = remoteImage {
+                // 2. Ảnh từ Memory/Disk Cache
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 245)
+                    .shadow(color: Color.black.opacity(0.15), radius: 12, x: 0, y: 8)
+            } else {
+                // 3. Đang tải lần đầu cho model lạ qua mạng
+                ZStack {
+                    if isLoading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .gray))
+                            .scaleEffect(1.1)
+                    } else {
                         RobotStationHeroView(
                             modelName: device.friendlyModelName,
                             isCleaning: device.isCleaning,
@@ -501,15 +557,45 @@ public struct RobotHeroImageView: View {
                         )
                     }
                 }
-            } else {
-                RobotStationHeroView(
-                    modelName: device.friendlyModelName,
-                    isCleaning: device.isCleaning,
-                    isDarkModel: device.isDarkModel
-                )
+                .frame(height: 245)
             }
         }
         .frame(height: 270)
+        .onAppear {
+            loadRemoteIfNeeded()
+        }
+    }
+    
+    private func loadRemoteIfNeeded() {
+        // Đã có asset đóng gói sẵn trong máy -> Bỏ qua tải mạng
+        if let assetName = device.localAssetName, UIImage(named: assetName) != nil {
+            return
+        }
+        guard let url = device.resolvedIconUrl else { return }
+        if let cached = RobotImageCacheManager.shared.image(for: url) {
+            self.remoteImage = cached
+            return
+        }
+        
+        isLoading = true
+        Task {
+            do {
+                var req = URLRequest(url: url)
+                req.timeoutInterval = 8
+                let (data, _) = try await URLSession.shared.data(for: req)
+                if let downloaded = UIImage(data: data) {
+                    RobotImageCacheManager.shared.save(image: downloaded, data: data, for: url)
+                    await MainActor.run {
+                        self.remoteImage = downloaded
+                        self.isLoading = false
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.isLoading = false
+                }
+            }
+        }
     }
 }
 
@@ -517,6 +603,8 @@ public struct RobotHeroImageView: View {
 public struct RobotIconThumbnailView: View {
     public let device: DeviceModel
     public var size: CGFloat = 52
+    
+    @State private var remoteImage: UIImage? = nil
     
     public init(device: DeviceModel, size: CGFloat = 52) {
         self.device = device
@@ -532,20 +620,18 @@ public struct RobotIconThumbnailView: View {
                         .stroke(device.isCleaning ? Color.cyan : Color.white.opacity(0.12), lineWidth: device.isCleaning ? 1.5 : 1)
                 )
             
-            if let iconUrl = device.resolvedIconUrl {
-                AsyncImage(url: iconUrl) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .padding(size * 0.1)
-                    case .failure, .empty:
-                        RobotAvatarView(isCleaning: device.isCleaning, isDarkModel: device.isDarkModel, size: size * 0.78)
-                    @unknown default:
-                        RobotAvatarView(isCleaning: device.isCleaning, isDarkModel: device.isDarkModel, size: size * 0.78)
-                    }
-                }
+            // 1. Kiểm tra Asset đóng gói sẵn (0ms)
+            if let assetName = device.localAssetName, let assetImg = UIImage(named: assetName) {
+                Image(uiImage: assetImg)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(size * 0.1)
+            } else if let img = remoteImage {
+                // 2. Ảnh từ cache
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(size * 0.1)
             } else {
                 RobotAvatarView(isCleaning: device.isCleaning, isDarkModel: device.isDarkModel, size: size * 0.78)
             }
@@ -559,6 +645,33 @@ public struct RobotIconThumbnailView: View {
             }
         }
         .frame(width: size, height: size)
+        .onAppear {
+            loadThumbnailIfNeeded()
+        }
+    }
+    
+    private func loadThumbnailIfNeeded() {
+        if let assetName = device.localAssetName, UIImage(named: assetName) != nil {
+            return
+        }
+        guard let url = device.resolvedIconUrl else { return }
+        if let cached = RobotImageCacheManager.shared.image(for: url) {
+            self.remoteImage = cached
+            return
+        }
+        Task {
+            do {
+                var req = URLRequest(url: url)
+                req.timeoutInterval = 8
+                let (data, _) = try await URLSession.shared.data(for: req)
+                if let downloaded = UIImage(data: data) {
+                    RobotImageCacheManager.shared.save(image: downloaded, data: data, for: url)
+                    await MainActor.run {
+                        self.remoteImage = downloaded
+                    }
+                }
+            } catch {}
+        }
     }
 }
 
