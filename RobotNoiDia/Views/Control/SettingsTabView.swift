@@ -44,7 +44,10 @@ public struct SettingsTabView: View {
                         
                         // Nhóm 2: Nhật ký & Phụ kiện
                         VStack(spacing: 0) {
-                            Button(action: { showCleaningLogSheet = true }) {
+                            Button(action: {
+                                Task { await viewModel.fetchCleaningLogs() }
+                                showCleaningLogSheet = true
+                            }) {
                                 settingItemRow(
                                     icon: "clock.arrow.circlepath",
                                     iconColor: Color(red: 0.0, green: 0.75, blue: 0.45),
@@ -314,10 +317,8 @@ public struct SettingsTabView: View {
             } message: {
                 Text("Nói \"OK YIKO\" để ra lệnh trực tiếp: \"Dọn dẹp phòng khách\", \"Quay về trạm sạc\", \"Tăng lực hút\".")
             }
-            .alert("Nhật ký dọn dẹp", isPresented: $showCleaningLogSheet) {
-                Button("Đóng", role: .cancel) {}
-            } message: {
-                Text("Lần dọn gần nhất: Đã làm sạch 48 m² trong 42 phút. Tình trạng: Hoàn tất xuất sắc.")
+            .sheet(isPresented: $showCleaningLogSheet) {
+                CleaningLogSheetView(viewModel: viewModel)
             }
             .alert("Cài đặt thông minh AIVI", isPresented: $showAiviSheet) {
                 Button("Đóng", role: .cancel) {}

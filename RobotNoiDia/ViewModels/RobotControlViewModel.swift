@@ -50,6 +50,12 @@ public final class RobotControlViewModel: ObservableObject {
     @Published public var toastMessage: String? = nil
     @Published public var showToast: Bool = false
     
+    // MARK: - Nhật ký vệ sinh & Thống kê trọn đời
+    @Published public var cleaningLogs: [CleaningLogItem] = []
+    @Published public var cleaningStats: CleaningStatsModel? = nil
+    @Published public var isLogsLoading: Bool = false
+    @Published public var showCleaningLogSheet: Bool = false
+    
     private let deviceService = EcovacsDeviceService.shared
     private var statePollTimer: Timer?
     
@@ -136,6 +142,7 @@ public final class RobotControlViewModel: ObservableObject {
             await refreshState(full: true)
             await refreshConsumables()
             await refreshMap()
+            await fetchCleaningLogs()
         }
     }
     
@@ -346,6 +353,15 @@ public final class RobotControlViewModel: ObservableObject {
             self.mapCoverageM2 = nil
         }
         self.isMapLoading = false
+    }
+    
+    // MARK: - Cleaning Logs
+    public func fetchCleaningLogs() async {
+        isLogsLoading = true
+        let (stats, logs) = await deviceService.getCleaningLogsAndStats(device: device)
+        self.cleaningStats = stats
+        self.cleaningLogs = logs
+        self.isLogsLoading = false
     }
     
     // MARK: - Toast

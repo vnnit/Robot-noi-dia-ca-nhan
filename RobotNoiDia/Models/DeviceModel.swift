@@ -174,3 +174,44 @@ public struct DeviceModel: Identifiable, Codable, Hashable {
         self.cleanStateText = cleanStateText
     }
 }
+
+// MARK: - Cleaning Stats & Logs Models
+public struct CleaningStatsModel: Codable, Hashable {
+    public let totalArea: Int
+    public let totalTimeMin: Int
+    public let totalCount: Int
+    
+    public init(totalArea: Int, totalTimeMin: Int, totalCount: Int) {
+        self.totalArea = totalArea
+        self.totalTimeMin = totalTimeMin
+        self.totalCount = totalCount
+    }
+    
+    public var totalHoursText: String {
+        let hours = Double(totalTimeMin) / 60.0
+        return String(format: "%.1f", hours)
+    }
+    
+    public var formattedArea: String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        return formatter.string(from: NSNumber(value: totalArea)) ?? "\(totalArea)"
+    }
+}
+
+public struct CleaningLogItem: Identifiable, Codable, Hashable {
+    public var id: String { "\(time)_\(area)_\(duration)" }
+    public let time: String
+    public let robot: String
+    public let area: Int
+    public let duration: Int
+    public let result: String
+    
+    public init(time: String, robot: String, area: Int, duration: Int, result: String) {
+        self.time = time
+        self.robot = robot
+        self.area = area
+        self.duration = duration
+        self.result = result
+    }
+}

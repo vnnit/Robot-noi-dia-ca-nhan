@@ -632,6 +632,58 @@ public final class EcovacsDeviceService {
         return svg.joined(separator: "\n")
     }
     
+    // MARK: - Nhật ký vệ sinh & Thống kê trọn đời (Cleaning Logs & Stats)
+    public func getCleaningLogsAndStats(device: DeviceModel) async -> (stats: CleaningStatsModel?, logs: [CleaningLogItem]) {
+        // 1. Ưu tiên lấy từ DIY Server
+        let baseUrl = Constants.diyServerBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if let url = URL(string: "\(baseUrl)/api/devices/\(device.did)/logs") {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = 4.0
+            
+            if let (data, response) = try? await session.data(for: request),
+               let http = response as? HTTPURLResponse, http.statusCode == 200,
+               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                
+                var statsModel: CleaningStatsModel? = nil
+                if let statsDict = json["stats"] as? [String: Any] {
+                    let area = (statsDict["total_area"] as? Int) ?? 0
+                    let timeMin = (statsDict["total_time_min"] as? Int) ?? 0
+                    let count = (statsDict["total_count"] as? Int) ?? 0
+                    statsModel = CleaningStatsModel(totalArea: area, totalTimeMin: timeMin, totalCount: count)
+                }
+                
+                var logItems: [CleaningLogItem] = []
+                if let logsArray = json["logs"] as? [[String: Any]] {
+                    for item in logsArray {
+                        let time = (item["time"] as? String) ?? "Hôm nay"
+                        let robot = (item["robot"] as? String) ?? device.displayName
+                        let area = (item["area"] as? Int) ?? 0
+                        let duration = (item["duration"] as? Int) ?? 0
+                        let result = (item["result"] as? String) ?? "Hoàn thành dọn dẹp"
+                        logItems.append(CleaningLogItem(time: time, robot: robot, area: area, duration: duration, result: result))
+                    }
+                }
+                
+                if statsModel != nil || !logItems.isEmpty {
+                    return (statsModel, logItems)
+                }
+            }
+        }
+        
+        // 2. Dự phòng: Gửi lệnh getTotalStats qua Ecovacs Cloud
+        let statsRes = try? await executeCommand(device: device, cmdName: "getTotalStats")
+        var fallbackStats: CleaningStatsModel? = nil
+        if let b = statsRes, let body = extractBodyData(b) {
+            let area = (body["area"] as? Int) ?? 0
+            let timeSec = (body["time"] as? Int) ?? 0
+            let count = (body["count"] as? Int) ?? 0
+            fallbackStats = CleaningStatsModel(totalArea: area, totalTimeMin: timeSec / 60, totalCount: count)
+        }
+        
+        return (fallbackStats, [])
+    }
+    
     // MARK: - Helper
     private func extractBodyData(_ json: [String: Any]) -> [String: Any]? {
         if let resp = json["resp"] as? [String: Any], let body = resp["body"] as? [String: Any], let data = body["data"] as? [String: Any] {

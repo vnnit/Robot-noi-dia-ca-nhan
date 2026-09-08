@@ -228,39 +228,74 @@ public struct RobotControlView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 6)
                 
-                // 4. FLOATING BANNER TRÊN ĐỈNH BOTTOM SHEET
-                if !isSheetExpanded && showBanner {
-                    VStack {
+                // 4. THANH MENU NỔI DƯỚI MỤC PIN (FLOATING ACTION CAPSULE BAR)
+                VStack {
+                    Spacer().frame(height: 52)
+                    
+                    HStack(spacing: 8) {
+                        // Trạng thái robot
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(viewModel.state.isWorking ? Color.blue : Color(red: 0.0, green: 0.75, blue: 0.45))
+                                .frame(width: 7, height: 7)
+                            
+                            Text(viewModel.state.isWorking ? "Robot đang dọn dẹp" : (viewModel.state.isCharging ? "Đang sạc tại trạm" : "Robot đang chờ lệnh"))
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Color(white: 0.2))
+                                .lineLimit(1)
+                        }
+                        
                         Spacer()
                         
-                        HStack(spacing: 8) {
-                            Image(systemName: "info.circle.fill")
-                                .font(.system(size: 14))
-                                .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-                            
-                            Text(viewModel.state.cleanState == "clean" ? "Robot đang thực hiện dọn dẹp tự động." : "Robot đang ở trạng thái chờ lệnh.")
-                                .font(.system(size: 12))
-                                .foregroundColor(Color(white: 0.2))
-                            
-                            Spacer()
-                            
-                            Button(action: {
-                                withAnimation { showBanner = false }
-                            }) {
-                                Image(systemName: "xmark")
+                        // Nút Nhật ký vệ sinh
+                        Button(action: {
+                            Task { await viewModel.fetchCleaningLogs() }
+                            viewModel.showCleaningLogSheet = true
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "clock.arrow.circlepath")
                                     .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.gray)
+                                Text("Nhật ký")
+                                    .font(.system(size: 11, weight: .bold))
                             }
+                            .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.1))
+                            .cornerRadius(8)
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .background(Color.white.opacity(0.95))
-                        .cornerRadius(12)
-                        .shadow(color: Color.black.opacity(0.08), radius: 6, y: 2)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, collapsedHeight + 8)
+                        
+                        // Nút Quét lại map
+                        Button(action: {
+                            Task { await viewModel.refreshMap() }
+                            viewModel.toastMessage = "Đang quét lại bản đồ..."
+                            viewModel.showToast = true
+                        }) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text("Quét")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .foregroundColor(Color(white: 0.3))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Color(white: 0.94))
+                            .cornerRadius(8)
+                        }
                     }
-                    .transition(.opacity)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Color.white.opacity(0.95))
+                    .cornerRadius(14)
+                    .shadow(color: Color.black.opacity(0.08), radius: 6, y: 2)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                    )
+                    .padding(.horizontal, 14)
+                    
+                    Spacer()
                 }
                 
                 // 5. DRAGGABLE BOTTOM SHEET (Chỉ giữ TỰ ĐỘNG, vuốt lên để xem cài đặt)
@@ -570,6 +605,9 @@ public struct RobotControlView: View {
         .sheet(isPresented: $viewModel.showMoreSettings) {
             SettingsTabView(viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.showCleaningLogSheet) {
+            CleaningLogSheetView(viewModel: viewModel)
+        }
         .alert("Đổi tên Robot", isPresented: $showRenameAlert) {
             TextField("Nhập tên mới", text: $newNameText)
             Button("Lưu") {
@@ -728,5 +766,179 @@ public struct RoundedCornerShape: Shape {
 extension View {
     public func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
         clipShape(RoundedCornerShape(radius: radius, corners: corners))
+    }
+}
+
+// MARK: - Màn hình Nhật ký vệ sinh & Thống kê trọn đời (Cleaning Log Sheet)
+public struct CleaningLogSheetView: View {
+    @ObservedObject var viewModel: RobotControlViewModel
+    @Environment(\.presentationMode) var presentationMode
+    
+    public init(viewModel: RobotControlViewModel) {
+        self.viewModel = viewModel
+    }
+    
+    public var body: some View {
+        NavigationView {
+            ZStack {
+                Color(red: 0.96, green: 0.97, blue: 0.99)
+                    .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 16) {
+                        // 3 Thẻ thống kê trọn đời (Stats Cards)
+                        if let stats = viewModel.cleaningStats {
+                            HStack(spacing: 10) {
+                                statCard(
+                                    title: "Tổng diện tích",
+                                    value: stats.formattedArea,
+                                    unit: "m²",
+                                    color: Color(red: 0.09, green: 0.47, blue: 1.0)
+                                )
+                                statCard(
+                                    title: "Tổng thời gian",
+                                    value: stats.totalHoursText,
+                                    unit: "giờ",
+                                    color: Color(red: 0.0, green: 0.75, blue: 0.45)
+                                )
+                                statCard(
+                                    title: "Số lần dọn",
+                                    value: "\(stats.totalCount)",
+                                    unit: "lần",
+                                    color: Color(red: 0.45, green: 0.3, blue: 0.9)
+                                )
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                        } else if viewModel.isLogsLoading {
+                            ProgressView()
+                                .padding(.top, 20)
+                        }
+                        
+                        // Danh sách lịch sử dọn dẹp gần đây
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("Lịch sử dọn dẹp gần đây")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(Color(white: 0.2))
+                                
+                                Spacer()
+                                
+                                Button(action: {
+                                    Task { await viewModel.fetchCleaningLogs() }
+                                }) {
+                                    Image(systemName: "arrow.clockwise")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                                }
+                            }
+                            .padding(.horizontal, 18)
+                            .padding(.top, 8)
+                            
+                            if viewModel.isLogsLoading && viewModel.cleaningLogs.isEmpty {
+                                VStack(spacing: 10) {
+                                    ProgressView()
+                                    Text("Đang tải dữ liệu nhật ký...")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.gray)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 30)
+                            } else if viewModel.cleaningLogs.isEmpty {
+                                VStack(spacing: 12) {
+                                    Image(systemName: "doc.text.magnifyingglass")
+                                        .font(.system(size: 38))
+                                        .foregroundColor(.gray.opacity(0.4))
+                                    Text("Chưa có phiên dọn dẹp nào gần đây")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.gray)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 35)
+                            } else {
+                                LazyVStack(spacing: 10) {
+                                    ForEach(viewModel.cleaningLogs) { log in
+                                        logItemRow(log: log)
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                            }
+                        }
+                        
+                        Spacer().frame(height: 24)
+                    }
+                }
+            }
+            .navigationTitle("Nhật Ký Dọn Dẹp")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        viewModel.showCleaningLogSheet = false
+                    }) {
+                        Text("Xong")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                    }
+                }
+            }
+        }
+    }
+    
+    private func statCard(title: String, value: String, unit: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(Color(white: 0.45))
+            
+            HStack(alignment: .lastTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 17, weight: .black))
+                    .foregroundColor(color)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                Text(unit)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(Color(white: 0.5))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(Color.white)
+        .cornerRadius(14)
+        .shadow(color: Color.black.opacity(0.04), radius: 5, y: 2)
+    }
+    
+    private func logItemRow(log: CleaningLogItem) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 20))
+                .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.45))
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(log.time)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(Color(white: 0.15))
+                Text(log.result)
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(white: 0.45))
+            }
+            
+            Spacer()
+            
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(log.area) m²")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(Color(white: 0.15))
+                Text("\(log.duration) phút")
+                    .font(.system(size: 11))
+                    .foregroundColor(.gray)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.white)
+        .cornerRadius(14)
+        .shadow(color: Color.black.opacity(0.03), radius: 4, y: 1)
     }
 }
