@@ -135,7 +135,13 @@ public struct MapTabView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .frame(height: 410)
                 } else if let svg = viewModel.svgMap, !svg.isEmpty {
-                    SVGWebView(svgString: svg)
+                    SVGWebView(
+                        svgString: svg,
+                        robotX: viewModel.state.robotX,
+                        robotY: viewModel.state.robotY,
+                        robotAngle: viewModel.state.robotAngle,
+                        trajectory: viewModel.state.trajectory
+                    )
                         .frame(height: 400)
                         .cornerRadius(16)
                         .padding(5)

@@ -164,7 +164,7 @@ public struct DeviceModel: Identifiable, Codable, Hashable {
     
     public var hasOmniStation: Bool {
         let text = (friendlyModelName + " " + model + " " + deviceClass).uppercased()
-        return text.contains("TURBO") || text.contains("OMNI") || text.contains("PRO") || text.contains("PLUS")
+        return text.contains("TURBO") || text.contains("OMNI") || text.contains("PRO") || text.contains("PLUS") || text.contains("T10") || text.contains("X1") || text.contains("X2") || text.contains("T20") || text.contains("T30")
     }
     
     public var hasEdgeDeepCleaning: Bool {

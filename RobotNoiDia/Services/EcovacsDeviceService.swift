@@ -455,20 +455,28 @@ public final class EcovacsDeviceService {
         return (robot, dock)
     }
 
-    // MARK: - 8. Lấy Bản đồ LiDAR SVG Realtime từ Robot (Zero-Server)
     public struct MapResult {
         public let svg: String
         public let mid: String
         public let coverageM2: Int
         public let robotPos: (x: Double, y: Double, a: Double)?
         public let dockPos: (x: Double, y: Double)?
+        public let viewBox: CGRect
         
-        public init(svg: String, mid: String, coverageM2: Int, robotPos: (x: Double, y: Double, a: Double)? = nil, dockPos: (x: Double, y: Double)? = nil) {
+        public init(
+            svg: String,
+            mid: String,
+            coverageM2: Int,
+            robotPos: (x: Double, y: Double, a: Double)? = nil,
+            dockPos: (x: Double, y: Double)? = nil,
+            viewBox: CGRect = CGRect(x: -40, y: -40, width: 780, height: 680)
+        ) {
             self.svg = svg
             self.mid = mid
             self.coverageM2 = coverageM2
             self.robotPos = robotPos
             self.dockPos = dockPos
+            self.viewBox = viewBox
         }
     }
     
@@ -522,7 +530,7 @@ public final class EcovacsDeviceService {
         }
         
         let coverageM2 = max(activeTiles.count * 10, 48)
-        let svg = generateSvgMap(
+        let (svg, viewBox) = generateSvgMap(
             device: device,
             mid: mid,
             cellWidth: cellWidth,
@@ -538,7 +546,7 @@ public final class EcovacsDeviceService {
             restrictedZones: restrictedZones
         )
         
-        return MapResult(svg: svg, mid: mid, coverageM2: coverageM2, robotPos: pos, dockPos: dock)
+        return MapResult(svg: svg, mid: mid, coverageM2: coverageM2, robotPos: pos, dockPos: dock, viewBox: viewBox)
     }
 
     public func getSvgMap(device: DeviceModel) async -> String? {
@@ -559,7 +567,7 @@ public final class EcovacsDeviceService {
         trajectory: [MapPoint],
         virtualWalls: [VirtualWall] = [],
         restrictedZones: [RestrictedZone] = []
-    ) -> String {
+    ) -> (svg: String, viewBox: CGRect) {
         let hasTiles = !activeTiles.isEmpty
         let minCol = hasTiles ? (activeTiles.map { $0.col }.min() ?? 0) : 0
         let maxCol = hasTiles ? (activeTiles.map { $0.col }.max() ?? 6) : 6
@@ -571,6 +579,7 @@ public final class EcovacsDeviceService {
         let vy = minRow * pieceHeight - pad
         let vw = (maxCol - minCol + 1) * pieceWidth + pad * 2
         let vh = (maxRow - minRow + 1) * pieceHeight + pad * 2
+        let viewBoxRect = CGRect(x: Double(vx), y: Double(vy), width: Double(vw), height: Double(vh))
         
         // Tọa độ trạm sạc Dock
         let defaultDockX = Double(minCol + maxCol + 1) * Double(pieceWidth) / 2.0
@@ -678,12 +687,14 @@ public final class EcovacsDeviceService {
             }
             let polyString = pts.joined(separator: " ")
             svg.append("  <!-- Real-time Trajectory Trail -->")
-            svg.append("  <polyline points=\"\(polyString)\" fill=\"none\" stroke=\"#00E5FF\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.9\" filter=\"url(#glow)\"/>")
-            svg.append("  <polyline points=\"\(polyString)\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"1.2\" stroke-dasharray=\"4,3\" opacity=\"0.85\"/>")
+            svg.append("  <polyline id=\"trajectoryLine\" points=\"\(polyString)\" fill=\"none\" stroke=\"#00E5FF\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.9\" filter=\"url(#glow)\"/>")
+            svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\(polyString)\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"1.2\" stroke-dasharray=\"4,3\" opacity=\"0.85\"/>")
         } else if !isCharging {
             // Sample subtle trace if trajectory just initiated
             svg.append("  <!-- Trajectory Trail -->")
-            svg.append("  <line x1=\"\(dockX)\" y1=\"\(dockY - 14)\" x2=\"\(rx)\" y2=\"\(ry)\" stroke=\"#00E5FF\" stroke-width=\"2.5\" stroke-dasharray=\"4,3\" opacity=\"0.8\" filter=\"url(#glow)\"/>")
+            svg.append("  <polyline id=\"trajectoryLine\" points=\"\(dockX),\(dockY - 14) \(rx),\(ry)\" fill=\"none\" stroke=\"#00E5FF\" stroke-width=\"2.5\" stroke-dasharray=\"4,3\" opacity=\"0.8\" filter=\"url(#glow)\"/>")
+        } else {
+            svg.append("  <polyline id=\"trajectoryLine\" points=\"\" fill=\"none\" stroke=\"#00E5FF\" stroke-width=\"3\" stroke-linecap=\"round\" opacity=\"0.9\"/>")
         }
         
         // Render Restricted Zones (Vùng cấm vào & Vùng cấm lau thảm)
@@ -706,7 +717,7 @@ public final class EcovacsDeviceService {
         
         // Charging Dock Station
         svg.append("  <!-- Charging Dock Station -->")
-        svg.append("  <g transform=\"translate(\(dockX - 16.0), \(dockY - 16.0))\">")
+        svg.append("  <g id=\"dockGroup\" transform=\"translate(\(dockX - 16.0), \(dockY - 16.0))\">")
         svg.append("    <rect width=\"32\" height=\"28\" rx=\"6\" fill=\"#064e3b\" stroke=\"#10b981\" stroke-width=\"2\"/>")
         svg.append("    <path d=\"M17 5L9 16h6l-2 9 9-13h-6l2-7z\" fill=\"#34d399\"/>")
         svg.append("    <text x=\"16\" y=\"40\" font-family=\"-apple-system, sans-serif\" font-size=\"9\" font-weight=\"bold\" fill=\"#34d399\" text-anchor=\"middle\">TRẠM SẠC</text>")
@@ -714,9 +725,9 @@ public final class EcovacsDeviceService {
         
         // Robot Position with Heading Direction & Radar Pulse
         svg.append("  <!-- Live Robot Position & Direction -->")
-        svg.append("  <g transform=\"translate(\(rx), \(ry))\" filter=\"url(#robotShadow)\">")
+        svg.append("  <g id=\"robotGroup\" transform=\"translate(\(rx), \(ry))\" filter=\"url(#robotShadow)\">")
         // Live Radar Pulse Animation
-        svg.append("    <circle r=\"24\" fill=\"none\" stroke=\"#00E5FF\" stroke-width=\"1.5\" opacity=\"0.6\">")
+        svg.append("    <circle id=\"radarPulse\" r=\"24\" fill=\"none\" stroke=\"#00E5FF\" stroke-width=\"1.5\" opacity=\"0.6\">")
         svg.append("      <animate attributeName=\"r\" values=\"16;32;16\" dur=\"2.2s\" repeatCount=\"indefinite\"/>")
         svg.append("      <animate attributeName=\"opacity\" values=\"0.8;0.05;0.8\" dur=\"2.2s\" repeatCount=\"indefinite\"/>")
         svg.append("    </circle>")
@@ -726,7 +737,7 @@ public final class EcovacsDeviceService {
         svg.append("    <circle r=\"7\" fill=\"#0284C7\" stroke=\"#38BDF8\" stroke-width=\"1\" />")
         svg.append("    <circle r=\"2.5\" fill=\"#FFFFFF\" />")
         // Heading Direction Arrow
-        svg.append("    <g transform=\"rotate(\(angle))\">")
+        svg.append("    <g id=\"robotHeading\" transform=\"rotate(\(angle))\">")
         svg.append("      <polygon points=\"0,-18 -4,-11 4,-11\" fill=\"#00E5FF\" stroke=\"#FFFFFF\" stroke-width=\"0.6\"/>")
         svg.append("    </g>")
         // Name Label
@@ -739,7 +750,7 @@ public final class EcovacsDeviceService {
         svg.append("  <text x=\"\(textX)\" y=\"\(textY)\" font-family=\"-apple-system, sans-serif\" font-size=\"10\" font-weight=\"600\" fill=\"#64748B\">LiDAR Map: #\(mid) • Realtime Zero-Server</text>")
         svg.append("</svg>")
         
-        return svg.joined(separator: "\n")
+        return (svg.joined(separator: "\n"), viewBoxRect)
     }
     
     // MARK: - 9. Nhật ký vệ sinh & Thống kê trọn đời (100% Ecovacs Cloud)
@@ -828,6 +839,34 @@ public final class EcovacsDeviceService {
         let key = "cleaning_schedules_\(device.did)"
         if let data = try? JSONEncoder().encode(schedules) {
             UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    // MARK: - 13. Quản Lý Tường Ảo & Vùng Cấm (Persistence)
+    public func getVirtualBoundaries(device: DeviceModel) -> (walls: [VirtualWall], zones: [RestrictedZone]) {
+        let wallKey = "virtual_walls_\(device.did)"
+        let zoneKey = "restricted_zones_\(device.did)"
+        var walls: [VirtualWall] = []
+        var zones: [RestrictedZone] = []
+        if let data = UserDefaults.standard.data(forKey: wallKey),
+           let list = try? JSONDecoder().decode([VirtualWall].self, from: data) {
+            walls = list
+        }
+        if let data = UserDefaults.standard.data(forKey: zoneKey),
+           let list = try? JSONDecoder().decode([RestrictedZone].self, from: data) {
+            zones = list
+        }
+        return (walls, zones)
+    }
+    
+    public func saveVirtualBoundaries(device: DeviceModel, walls: [VirtualWall], zones: [RestrictedZone]) {
+        let wallKey = "virtual_walls_\(device.did)"
+        let zoneKey = "restricted_zones_\(device.did)"
+        if let data = try? JSONEncoder().encode(walls) {
+            UserDefaults.standard.set(data, forKey: wallKey)
+        }
+        if let data = try? JSONEncoder().encode(zones) {
+            UserDefaults.standard.set(data, forKey: zoneKey)
         }
     }
 

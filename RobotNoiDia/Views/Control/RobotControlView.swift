@@ -65,6 +65,9 @@ public struct RobotControlView: View {
         .sheet(isPresented: $viewModel.showCleaningLogSheet) {
             CleaningLogSheetView(viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.showScheduleSheet) {
+            ScheduleView(viewModel: viewModel)
+        }
         .alert("Đổi tên Robot", isPresented: $showRenameAlert) {
             TextField("Nhập tên mới", text: $newNameText)
             Button("Lưu") {
@@ -119,11 +122,30 @@ public struct RobotControlView: View {
                             .foregroundColor(.gray)
                     }
                 } else if let svg = viewModel.svgMap, !svg.isEmpty {
-                    SVGWebView(svgString: svg)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .cornerRadius(18)
-                        .padding(.horizontal, 8)
-                        .shadow(color: Color.black.opacity(0.18), radius: 8, y: 3)
+                    ZStack {
+                        SVGWebView(
+                            svgString: svg,
+                            robotX: viewModel.state.robotX,
+                            robotY: viewModel.state.robotY,
+                            robotAngle: viewModel.state.robotAngle,
+                            trajectory: viewModel.state.trajectory
+                        )
+                        .disabled(viewModel.isEditingBoundaries)
+                        
+                        if viewModel.isEditingBoundaries {
+                            GeometryReader { geo in
+                                BoundaryDrawingOverlayView(
+                                    viewModel: viewModel,
+                                    containerSize: geo.size,
+                                    mapBounds: viewModel.mapBounds
+                                )
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .cornerRadius(18)
+                    .padding(.horizontal, 8)
+                    .shadow(color: Color.black.opacity(0.18), radius: 8, y: 3)
                 } else {
                     LiDARRadarScanningView(device: viewModel.device, state: viewModel.state) {
                         Task { await viewModel.refreshMap() }
@@ -204,11 +226,28 @@ public struct RobotControlView: View {
             }
             
             Button(action: {
-                showBoundaryDialog = true
+                withAnimation {
+                    viewModel.isEditingBoundaries.toggle()
+                }
+                if viewModel.isEditingBoundaries {
+                    viewModel.showToastNotification("Chạm và kéo tay để vẽ tường ảo & vùng cấm")
+                }
             }) {
-                Image(systemName: "hand.raised.slash.fill")
+                Image(systemName: viewModel.isEditingBoundaries ? "pencil.slash" : "hand.raised.slash.fill")
                     .font(.system(size: 16))
-                    .foregroundColor(Color(red: 0.95, green: 0.25, blue: 0.25))
+                    .foregroundColor(viewModel.isEditingBoundaries ? .white : Color(red: 0.95, green: 0.25, blue: 0.25))
+                    .frame(width: 42, height: 42)
+                    .background(viewModel.isEditingBoundaries ? Color.red : Color.white.opacity(0.95))
+                    .clipShape(Circle())
+                    .shadow(color: Color.black.opacity(0.08), radius: 5, y: 2)
+            }
+            
+            Button(action: {
+                viewModel.showScheduleSheet = true
+            }) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 16))
+                    .foregroundColor(Color.orange)
                     .frame(width: 42, height: 42)
                     .background(Color.white.opacity(0.95))
                     .clipShape(Circle())
@@ -395,6 +434,7 @@ public struct RobotControlView: View {
                     
                     VStack(alignment: .leading, spacing: 18) {
                         smartStationCard
+                        scheduleQuickCard
                         cleaningControlsCard
                     }
                     .padding(.horizontal, 20)
@@ -502,89 +542,160 @@ public struct RobotControlView: View {
     @ViewBuilder
     private var smartStationCard: some View {
         if viewModel.device.hasOmniStation {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Image(systemName: "powerplug.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-                    Text("Trạm sạc thông minh OMNI")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(Color(white: 0.15))
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "powerplug.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                        Text("Trạm sạc thông minh (Turbo / OMNI)")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(Color(white: 0.15))
+                    }
+                    
                     Spacer()
+                    
                     if viewModel.state.isWashingMop {
-                        Text("Đang giặt giẻ...")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.blue)
+                        HStack(spacing: 4) {
+                            Circle().fill(Color.blue).frame(width: 6, height: 6)
+                            Text("Đang giặt giẻ...")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.blue)
+                        }
                     } else if viewModel.state.isAirDrying {
-                        Text("Đang sấy khí nóng...")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.orange)
+                        HStack(spacing: 4) {
+                            Circle().fill(Color.orange).frame(width: 6, height: 6)
+                            Text("Đang sấy nóng...")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.orange)
+                        }
                     } else if viewModel.state.dustbinEmptying {
-                        Text("Đang gom rác...")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.purple)
+                        HStack(spacing: 4) {
+                            Circle().fill(Color.purple).frame(width: 6, height: 6)
+                            Text("Đang hút rác...")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.purple)
+                        }
+                    } else {
+                        Text("Trạm sẵn sàng")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Color(white: 0.5))
                     }
                 }
                 
                 HStack(spacing: 8) {
+                    // Nút 1: Giặt giẻ thủ công
                     Button(action: {
                         viewModel.triggerStationAction(viewModel.state.isWashingMop ? .stopMopWash : .startMopWash)
                     }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: viewModel.state.isWashingMop ? "stop.fill" : "drop.fill")
-                                .font(.system(size: 11))
+                        VStack(spacing: 4) {
+                            Image(systemName: viewModel.state.isWashingMop ? "stop.fill" : "drop.triangle.fill")
+                                .font(.system(size: 14))
                             Text(viewModel.state.isWashingMop ? "Dừng giặt" : "Giặt giẻ")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: 11, weight: .bold))
+                            Text(viewModel.state.isWashingMop ? "Đang chạy" : "Thủ công")
+                                .font(.system(size: 9))
+                                .opacity(0.8)
                         }
                         .foregroundColor(viewModel.state.isWashingMop ? .white : Color(red: 0.09, green: 0.47, blue: 1.0))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 36)
-                        .background(viewModel.state.isWashingMop ? Color.blue : Color(red: 0.92, green: 0.96, blue: 1.0))
-                        .cornerRadius(8)
+                        .padding(.vertical, 8)
+                        .background(viewModel.state.isWashingMop ? Color.blue : Color(red: 0.91, green: 0.95, blue: 1.0))
+                        .cornerRadius(10)
                     }
                     
+                    // Nút 2: Bắt đầu sấy khô giẻ khí nóng (Hot Air Drying)
                     Button(action: {
                         viewModel.triggerStationAction(viewModel.state.isAirDrying ? .stopAirDrying : .startAirDrying)
                     }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: viewModel.state.isAirDrying ? "stop.fill" : "flame.fill")
-                                .font(.system(size: 11))
-                            Text(viewModel.state.isAirDrying ? "Dừng sấy" : "Sấy khô")
-                                .font(.system(size: 12, weight: .semibold))
+                        VStack(spacing: 4) {
+                            Image(systemName: viewModel.state.isAirDrying ? "stop.fill" : "wind")
+                                .font(.system(size: 14))
+                            Text(viewModel.state.isAirDrying ? "Dừng sấy" : "Sấy khí nóng")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(viewModel.state.isAirDrying ? "Đang sấy" : "Khí nóng 45°C")
+                                .font(.system(size: 9))
+                                .opacity(0.8)
                         }
                         .foregroundColor(viewModel.state.isAirDrying ? .white : Color.orange)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 36)
+                        .padding(.vertical, 8)
                         .background(viewModel.state.isAirDrying ? Color.orange : Color.orange.opacity(0.12))
-                        .cornerRadius(8)
+                        .cornerRadius(10)
                     }
                     
+                    // Nút 3: Tự động hút rác vào túi bụi (Auto-empty dustbin)
                     Button(action: {
                         viewModel.triggerStationAction(.emptyDustbin)
                     }) {
-                        HStack(spacing: 5) {
+                        VStack(spacing: 4) {
                             Image(systemName: "trash.fill")
-                                .font(.system(size: 11))
-                            Text(viewModel.state.dustbinEmptying ? "Gom rác..." : "Gom rác")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: 14))
+                            Text(viewModel.state.dustbinEmptying ? "Đang hút..." : "Hút bụi rác")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Vào túi bụi")
+                                .font(.system(size: 9))
+                                .opacity(0.8)
                         }
-                        .foregroundColor(Color.purple)
+                        .foregroundColor(viewModel.state.dustbinEmptying ? .white : Color.purple)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 36)
-                        .background(Color.purple.opacity(0.12))
-                        .cornerRadius(8)
+                        .padding(.vertical, 8)
+                        .background(viewModel.state.dustbinEmptying ? Color.purple : Color.purple.opacity(0.12))
+                        .cornerRadius(10)
                     }
                 }
             }
             .padding(12)
             .background(Color(red: 0.97, green: 0.98, blue: 1.0))
-            .cornerRadius(12)
+            .cornerRadius(14)
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: 14)
                     .stroke(Color.blue.opacity(0.15), lineWidth: 1)
             )
             
             Divider().padding(.vertical, 2)
+        }
+    }
+    
+    @ViewBuilder
+    private var scheduleQuickCard: some View {
+        Button(action: {
+            viewModel.showScheduleSheet = true
+        }) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color.orange.opacity(0.12))
+                        .frame(width: 38, height: 38)
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.orange)
+                }
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Lịch Hẹn Giờ Dọn Dẹp (Schedule)")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Color(white: 0.15))
+                    
+                    let activeCount = viewModel.state.schedules.filter { $0.isEnabled }.count
+                    Text(activeCount > 0 ? "\(activeCount) khung giờ đang bật tự động" : "Hẹn robot tự chạy vào khung giờ cố định trong tuần")
+                        .font(.system(size: 11))
+                        .foregroundColor(.gray)
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.gray.opacity(0.6))
+            }
+            .padding(12)
+            .background(Color.white)
+            .cornerRadius(14)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color.orange.opacity(0.2), lineWidth: 1)
+            )
         }
     }
     

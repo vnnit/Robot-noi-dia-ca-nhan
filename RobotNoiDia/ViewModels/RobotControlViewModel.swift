@@ -34,6 +34,7 @@ public final class RobotControlViewModel: ObservableObject {
     @Published public var svgMap: String? = nil
     @Published public var mapId: String? = nil
     @Published public var mapCoverageM2: Int? = nil
+    @Published public var mapBounds: CGRect = CGRect(x: -40, y: -40, width: 780, height: 680)
     @Published public var selectedTab: ControlTab = .controls
     
     // Thuộc tính điều khiển chi tiết theo Hình 2, 3, 4
@@ -44,6 +45,8 @@ public final class RobotControlViewModel: ObservableObject {
     @Published public var edgeDeepCleaning: Bool = true
     @Published public var doNotDisturb: Bool = false
     @Published public var showMoreSettings: Bool = false
+    @Published public var showScheduleSheet: Bool = false
+    @Published public var isEditingBoundaries: Bool = false
     
     @Published public var isExecutingCommand: Bool = false
     @Published public var isMapLoading: Bool = false
@@ -150,6 +153,7 @@ public final class RobotControlViewModel: ObservableObject {
     
     public func refreshAll() {
         loadSchedules()
+        loadVirtualBoundaries()
         Task {
             await refreshState(full: true)
             await refreshLivePositionAndTrajectory()
@@ -410,6 +414,7 @@ public final class RobotControlViewModel: ObservableObject {
         self.svgMap = res.svg
         self.mapId = res.mid
         self.mapCoverageM2 = res.coverageM2
+        self.mapBounds = res.viewBox
     }
     
     public func refreshMap() async {
@@ -420,9 +425,16 @@ public final class RobotControlViewModel: ObservableObject {
     }
     
     // MARK: - Quản Lý Tường Ảo & Vùng Cấm (Virtual Boundaries)
+    public func loadVirtualBoundaries() {
+        let (walls, zones) = deviceService.getVirtualBoundaries(device: device)
+        self.state.virtualWalls = walls
+        self.state.restrictedZones = zones
+    }
+    
     public func addVirtualWall(x1: Double, y1: Double, x2: Double, y2: Double) {
         let wall = VirtualWall(x1: x1, y1: y1, x2: x2, y2: y2)
         self.state.virtualWalls.append(wall)
+        deviceService.saveVirtualBoundaries(device: device, walls: self.state.virtualWalls, zones: self.state.restrictedZones)
         Task { await updateMapSvg() }
         showToastNotification("Đã thêm tường ảo")
     }
@@ -430,20 +442,39 @@ public final class RobotControlViewModel: ObservableObject {
     public func addRestrictedZone(x: Double, y: Double, width: Double, height: Double, type: RestrictedZoneType) {
         let zone = RestrictedZone(x: x, y: y, width: width, height: height, type: type)
         self.state.restrictedZones.append(zone)
+        deviceService.saveVirtualBoundaries(device: device, walls: self.state.virtualWalls, zones: self.state.restrictedZones)
         Task { await updateMapSvg() }
         showToastNotification("Đã thêm \(type.title)")
     }
     
     public func removeVirtualWall(id: String) {
         self.state.virtualWalls.removeAll { $0.id == id }
+        deviceService.saveVirtualBoundaries(device: device, walls: self.state.virtualWalls, zones: self.state.restrictedZones)
         Task { await updateMapSvg() }
         showToastNotification("Đã xóa tường ảo")
     }
     
     public func removeRestrictedZone(id: String) {
         self.state.restrictedZones.removeAll { $0.id == id }
+        deviceService.saveVirtualBoundaries(device: device, walls: self.state.virtualWalls, zones: self.state.restrictedZones)
         Task { await updateMapSvg() }
         showToastNotification("Đã xóa vùng cấm")
+    }
+    
+    public func saveBoundaries(walls: [VirtualWall], zones: [RestrictedZone]) {
+        self.state.virtualWalls = walls
+        self.state.restrictedZones = zones
+        deviceService.saveVirtualBoundaries(device: device, walls: walls, zones: zones)
+        Task { await updateMapSvg() }
+        showToastNotification("Đã cập nhật tường ảo & vùng cấm")
+    }
+    
+    public func clearAllBoundaries() {
+        self.state.virtualWalls.removeAll()
+        self.state.restrictedZones.removeAll()
+        deviceService.saveVirtualBoundaries(device: device, walls: [], zones: [])
+        Task { await updateMapSvg() }
+        showToastNotification("Đã xóa tất cả tường ảo & vùng cấm")
     }
     
     // MARK: - Điều Khiển Trạm Sạc Thông Minh (Station Controls)
