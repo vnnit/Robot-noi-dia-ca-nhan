@@ -4,9 +4,15 @@ public struct RobotControlView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var viewModel: RobotControlViewModel
     
-    // Quản lý Bottom Sheet kéo vuốt mượt mà
+    // Quản lý Bottom Sheet 3 nấc kéo vuốt mượt mà chuẩn Ecovacs
+    enum SheetSnapState {
+        case compact   // Cao 135pt: Chỉ lộ 3 nút chính, tối đa diện tích bản đồ
+        case standard  // Cao 275pt: Chế độ mặc định (Tự động / Phòng / Vùng + 3 nút)
+        case expanded  // Toàn màn hình: Cuộn xem chi tiết Trạm sạc, Lực hút, Cài đặt
+    }
+    
+    @State private var sheetSnap: SheetSnapState = .standard
     @State private var dragOffset: CGFloat = 0
-    @State private var isSheetExpanded: Bool = false
     
     @State private var showRenameAlert: Bool = false
     @State private var newNameText: String = ""
@@ -22,13 +28,22 @@ public struct RobotControlView: View {
             let screenHeight = geometry.size.height
             let screenWidth = geometry.size.width
             
-            let collapsedHeight: CGFloat = 240
+            let compactHeight: CGFloat = 135
+            let standardHeight: CGFloat = 275
             let expandedHeight: CGFloat = screenHeight - 90
-            let collapsedOffsetY = screenHeight - collapsedHeight
+            
+            let compactOffsetY = screenHeight - compactHeight
+            let standardOffsetY = screenHeight - standardHeight
             let expandedOffsetY: CGFloat = 90
             
-            let baseOffsetY = isSheetExpanded ? expandedOffsetY : collapsedOffsetY
-            let currentSheetOffsetY = max(expandedOffsetY, min(collapsedOffsetY, baseOffsetY + dragOffset))
+            let baseOffsetY: CGFloat = {
+                switch sheetSnap {
+                case .compact: return compactOffsetY
+                case .standard: return standardOffsetY
+                case .expanded: return expandedOffsetY
+                }
+            }()
+            let currentSheetOffsetY = max(expandedOffsetY, min(compactOffsetY, baseOffsetY + dragOffset))
             
             ZStack(alignment: .top) {
                 Color(red: 0.94, green: 0.96, blue: 0.98)
@@ -98,15 +113,27 @@ public struct RobotControlView: View {
                 dragOffset = value.translation.height
             }
             .onEnded { value in
+                let translation = value.translation.height
                 let velocity = value.predictedEndTranslation.height
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                    if isSheetExpanded {
-                        if value.translation.height > 35 || velocity > 120 {
-                            isSheetExpanded = false
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                    switch sheetSnap {
+                    case .compact:
+                        if translation < -80 || velocity < -150 {
+                            sheetSnap = .expanded
+                        } else if translation < -25 || velocity < -50 {
+                            sheetSnap = .standard
                         }
-                    } else {
-                        if value.translation.height < -35 || velocity < -120 {
-                            isSheetExpanded = true
+                    case .standard:
+                        if translation < -40 || velocity < -120 {
+                            sheetSnap = .expanded
+                        } else if translation > 40 || velocity > 120 {
+                            sheetSnap = .compact
+                        }
+                    case .expanded:
+                        if translation > 150 || velocity > 250 {
+                            sheetSnap = .compact
+                        } else if translation > 35 || velocity > 100 {
+                            sheetSnap = .standard
                         }
                     }
                     dragOffset = 0
@@ -393,18 +420,57 @@ public struct RobotControlView: View {
                 HStack(spacing: 6) {
                     let isDevOnline = viewModel.device.isOnline && viewModel.state.cleanState != "offline"
                     let isPause = viewModel.state.cleanState == "pause"
-                    Circle()
-                        .fill(isDevOnline ? (isPause ? Color.orange : (viewModel.state.isWorking ? Color.blue : Color(red: 0.0, green: 0.75, blue: 0.45))) : Color.gray)
-                        .frame(width: 7, height: 7)
                     
-                    Text(
-                        isDevOnline ?
-                        (isPause ? "Robot đang tạm dừng (Chờ lệnh)" : (viewModel.state.isWorking ? "Robot đang dọn dẹp" : (viewModel.state.isCharging ? "Đang sạc tại trạm" : "Robot đang chờ lệnh"))) :
-                        "Robot ngoại tuyến (Tắt nguồn hoặc mất Wi-Fi)"
-                    )
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(isDevOnline ? (isPause ? Color.orange : Color(white: 0.2)) : Color.red.opacity(0.8))
-                        .lineLimit(1)
+                    if isDevOnline && (viewModel.state.isWorking || isPause) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(isPause ? Color.orange : Color(red: 0.09, green: 0.52, blue: 1.0))
+                                .frame(width: 7, height: 7)
+                            
+                            let mins = viewModel.state.cleanDurationSec / 60
+                            let secs = viewModel.state.cleanDurationSec % 60
+                            HStack(spacing: 2) {
+                                Image(systemName: "clock.fill")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.gray)
+                                Text(String(format: "%02d:%02d", mins, secs))
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundColor(Color(white: 0.15))
+                            }
+                            
+                            Text("•")
+                                .font(.system(size: 10))
+                                .foregroundColor(.gray.opacity(0.6))
+                                
+                            HStack(spacing: 2) {
+                                Image(systemName: "square.dashed")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.gray)
+                                Text(String(format: "%.1f m²", viewModel.state.cleanAreaM2))
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundColor(Color(white: 0.15))
+                            }
+                            
+                            if isPause {
+                                Text("(Tạm dừng)")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.orange)
+                            }
+                        }
+                    } else {
+                        Circle()
+                            .fill(isDevOnline ? (viewModel.state.isCharging ? Color(red: 0.0, green: 0.75, blue: 0.45) : Color.blue) : Color.gray)
+                            .frame(width: 7, height: 7)
+                        
+                        Text(
+                            isDevOnline ?
+                            (viewModel.state.isCharging ? "Đang sạc tại trạm" : "Robot đang chờ lệnh") :
+                            "Robot ngoại tuyến (Tắt nguồn hoặc mất Wi-Fi)"
+                        )
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(isDevOnline ? Color(white: 0.2) : Color.red.opacity(0.8))
+                            .lineLimit(1)
+                    }
                 }
                 
                 Spacer()
@@ -487,10 +553,14 @@ public struct RobotControlView: View {
                     .padding(.top, 8)
                 
                 HStack(spacing: 4) {
-                    Image(systemName: isSheetExpanded ? "chevron.down" : "chevron.up")
+                    Image(systemName: sheetSnap == .expanded ? "chevron.down" : "chevron.up")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-                    Text(isSheetExpanded ? "Thu gọn" : "Vuốt lên xem cài đặt")
+                    Text(
+                        sheetSnap == .expanded ? "Thu gọn" : (
+                            sheetSnap == .compact ? "Mở rộng bảng điều khiển" : "Vuốt lên xem cài đặt"
+                        )
+                    )
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(Color(white: 0.45))
                 }
@@ -499,8 +569,16 @@ public struct RobotControlView: View {
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                    isSheetExpanded.toggle()
+                HapticManager.shared.light()
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                    switch sheetSnap {
+                    case .compact:
+                        sheetSnap = .standard
+                    case .standard:
+                        sheetSnap = .expanded
+                    case .expanded:
+                        sheetSnap = .standard
+                    }
                 }
             }
             .highPriorityGesture(sheetDragGesture)
@@ -523,7 +601,7 @@ public struct RobotControlView: View {
                     Spacer().frame(height: 100)
                 }
             }
-            .scrollDisabled(!isSheetExpanded)
+            .scrollDisabled(sheetSnap != .expanded)
         }
         .frame(width: screenWidth, height: expandedHeight)
         .background(Color.white)
@@ -536,61 +614,63 @@ public struct RobotControlView: View {
     @ViewBuilder
     private var bottomSheetMainActions: some View {
         VStack(spacing: 12) {
-            // MARK: - 1. Bộ Chọn Chế Độ Dọn Dẹp (Auto / Theo Phòng / Khoanh Vùng)
-            HStack(spacing: 6) {
-                cleanModeTabButton(title: "Tự động", mode: "auto", icon: "sparkles")
-                cleanModeTabButton(title: "Theo phòng", mode: "area", icon: "square.split.2x2.fill")
-                cleanModeTabButton(title: "Khoanh vùng", mode: "custom", icon: "viewfinder")
-            }
-            .padding(3)
-            .background(Color(red: 0.94, green: 0.95, blue: 0.97))
-            .cornerRadius(12)
-            .padding(.horizontal, 16)
-            
-            // Nút Chuyển Đổi Dọn 1 Lần / 2 Lần Đan Lưới Bàn Cờ & Phím Lái D-Pad
-            HStack {
-                Button(action: {
-                    viewModel.toggleCleanCount()
-                }) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "repeat")
-                            .font(.system(size: 11, weight: .bold))
-                        Text(viewModel.state.cleanCount == 2 ? "2 Lượt Đan Lưới (Sạch Sâu)" : "1 Lượt Tiêu Chuẩn")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .foregroundColor(viewModel.state.cleanCount == 2 ? Color.purple : Color(red: 0.2, green: 0.2, blue: 0.25))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(viewModel.state.cleanCount == 2 ? Color.purple.opacity(0.12) : Color(red: 0.94, green: 0.95, blue: 0.97))
-                    .cornerRadius(8)
+            if sheetSnap != .compact {
+                // MARK: - 1. Bộ Chọn Chế Độ Dọn Dẹp (Auto / Theo Phòng / Khoanh Vùng)
+                HStack(spacing: 6) {
+                    cleanModeTabButton(title: "Tự động", mode: "auto", icon: "sparkles")
+                    cleanModeTabButton(title: "Theo phòng", mode: "area", icon: "square.split.2x2.fill")
+                    cleanModeTabButton(title: "Khoanh vùng", mode: "custom", icon: "viewfinder")
                 }
+                .padding(3)
+                .background(Color(red: 0.94, green: 0.95, blue: 0.97))
+                .cornerRadius(12)
+                .padding(.horizontal, 16)
                 
-                Spacer()
-                
-                Button(action: {
-                    HapticManager.shared.light()
-                    viewModel.showRemoteControlSheet = true
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "gamecontroller.fill")
-                            .font(.system(size: 11))
-                        Text("Lái D-Pad")
-                            .font(.system(size: 11, weight: .semibold))
+                // Nút Chuyển Đổi Dọn 1 Lần / 2 Lần Đan Lưới Bàn Cờ & Phím Lái D-Pad
+                HStack {
+                    Button(action: {
+                        viewModel.toggleCleanCount()
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "repeat")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(viewModel.state.cleanCount == 2 ? "2 Lượt Đan Lưới (Sạch Sâu)" : "1 Lượt Tiêu Chuẩn")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundColor(viewModel.state.cleanCount == 2 ? Color.purple : Color(red: 0.2, green: 0.2, blue: 0.25))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(viewModel.state.cleanCount == 2 ? Color.purple.opacity(0.12) : Color(red: 0.94, green: 0.95, blue: 0.97))
+                        .cornerRadius(8)
                     }
-                    .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.1))
-                    .cornerRadius(8)
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        HapticManager.shared.light()
+                        viewModel.showRemoteControlSheet = true
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "gamecontroller.fill")
+                                .font(.system(size: 11))
+                            Text("Lái D-Pad")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.1))
+                        .cornerRadius(8)
+                    }
                 }
-            }
-            .padding(.horizontal, 16)
-            
-            // MARK: - 2. Thanh Chọn Phòng (khi mode == "area")
-            if viewModel.cleanModeTab == "area" {
-                roomSelectionBar
-            } else if viewModel.cleanModeTab == "custom" {
-                areaSelectionInfoBar
+                .padding(.horizontal, 16)
+                
+                // MARK: - 2. Thanh Chọn Phòng (khi mode == "area")
+                if viewModel.cleanModeTab == "area" {
+                    roomSelectionBar
+                } else if viewModel.cleanModeTab == "custom" {
+                    areaSelectionInfoBar
+                }
             }
             
             // MARK: - 3. Các Nút Thao Tác Chính
