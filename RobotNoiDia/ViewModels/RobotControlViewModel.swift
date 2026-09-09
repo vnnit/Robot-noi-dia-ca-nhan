@@ -69,6 +69,12 @@ public final class RobotControlViewModel: ObservableObject {
     
     private let deviceService = EcovacsDeviceService.shared
     private var pollingTask: Task<Void, Never>?
+    private var consecutiveFailureCount: Int = 0
+    private var pausePollingUntil: Date = Date.distantPast
+    
+    public func pausePolling(forSeconds seconds: TimeInterval = 4.0) {
+        pausePollingUntil = Date().addingTimeInterval(seconds)
+    }
     
     public init(device: DeviceModel) {
         self.device = device
@@ -299,16 +305,23 @@ public final class RobotControlViewModel: ObservableObject {
         }
     }
     
-    // MARK: - State Polling (Chu kỳ thông minh: 2.5s khi dọn, 8s khi nghỉ)
+    // MARK: - State Polling (Chu kỳ thông minh: 3s khi dọn, 6s khi nghỉ)
     public func refreshState(full: Bool = false) async {
-        let newState = await deviceService.getDeviceState(device: device, full: full, existingState: self.state)
+        let (newState, isLiveSuccess) = await deviceService.getDeviceState(device: device, full: full, existingState: self.state)
         self.state = newState
-        if newState.cleanState == "offline" {
-            self.device.status = 0
-        } else {
+        if isLiveSuccess {
+            self.consecutiveFailureCount = 0
             self.device.status = 1
+        } else {
+            self.consecutiveFailureCount += 1
+            // Chỉ đánh dấu ngoại tuyến khi mất liên lạc liên tiếp 5 lần (khoảng 20s không có phản hồi)
+            if self.consecutiveFailureCount >= 5 {
+                self.device.status = 0
+                self.state.cleanState = "offline"
+                self.state.cleanStateText = "Ngoại tuyến (Offline)"
+            }
         }
-        NotificationManager.shared.notifyStateChange(device: device, state: newState)
+        NotificationManager.shared.notifyStateChange(device: device, state: self.state)
     }
     
     public func deleteRobot() async throws {
@@ -318,18 +331,29 @@ public final class RobotControlViewModel: ObservableObject {
     private func startStatePolling() {
         stopStatePolling()
         pollingTask = Task { @MainActor [weak self] in
+            var pollCounter = 0
             while !Task.isCancelled {
                 guard let self = self else { break }
                 let isBusy = self.state.cleanState == "clean" || self.state.cleanState == "pause" || self.state.cleanState == "go_charging"
-                let sleepSeconds: UInt64 = isBusy ? 3 : 5
+                let sleepSeconds: UInt64 = isBusy ? 3 : 6
                 try? await Task.sleep(nanoseconds: sleepSeconds * 1_000_000_000)
                 guard !Task.isCancelled else { break }
                 
-                await self.refreshState(full: false)
+                // Nhường kết nối cho các lệnh điều khiển tức thì của người dùng
+                if Date() < self.pausePollingUntil {
+                    continue
+                }
+                
+                pollCounter += 1
+                let shouldFull = (pollCounter % 5 == 0)
+                await self.refreshState(full: shouldFull)
+                
                 if isBusy || self.selectedTab == .map {
-                    await self.refreshLivePositionAndTrajectory()
-                    if self.svgMap == nil {
-                        await self.refreshMap()
+                    if Date() >= self.pausePollingUntil {
+                        await self.refreshLivePositionAndTrajectory()
+                        if self.svgMap == nil {
+                            await self.refreshMap()
+                        }
                     }
                 }
             }
@@ -379,16 +403,26 @@ public final class RobotControlViewModel: ObservableObject {
     // MARK: - Huỷ bỏ nhiệm vụ dọn dẹp khi đang tạm dừng (Thoát trạng thái chờ)
     public func triggerCancelTask() {
         HapticManager.shared.medium()
+        pausePolling(forSeconds: 4.0)
+        let prevCleanState = self.state.cleanState
+        let prevCleanText = self.state.cleanStateText
+        
+        // Cập nhật giao diện lập tức 0ms
+        self.state.cleanState = "stop"
+        self.state.cleanStateText = "Đã dừng dọn"
+        self.showToastNotification("Đang dừng và hủy nhiệm vụ...")
         isExecutingCommand = true
+        
         Task {
             do {
                 try await deviceService.clean(device: device, action: .stop)
-                self.state.cleanState = "stop"
-                self.state.cleanStateText = "Đã dừng dọn"
                 self.showToastNotification("Đã hủy bỏ nhiệm vụ dọn dẹp")
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
                 await self.refreshState(full: true)
             } catch {
                 HapticManager.shared.error()
+                self.state.cleanState = prevCleanState
+                self.state.cleanStateText = prevCleanText
                 self.showToastNotification("Lỗi: \(error.localizedDescription)")
             }
             self.isExecutingCommand = false
@@ -408,6 +442,14 @@ public final class RobotControlViewModel: ObservableObject {
             return
         }
         
+        pausePolling(forSeconds: 4.0)
+        let prevCleanState = self.state.cleanState
+        let prevCleanText = self.state.cleanStateText
+        
+        // Cập nhật giao diện dọn dẹp tức thì (0ms)
+        self.state.cleanState = "clean"
+        self.state.cleanStateText = "Đang dọn dẹp"
+        
         isExecutingCommand = true
         let count = state.cleanCount
         let countSuffix = count == 2 ? " (Đan lưới X2)" : ""
@@ -418,6 +460,8 @@ public final class RobotControlViewModel: ObservableObject {
                     let ids = Array(selectedRoomIds)
                     if ids.isEmpty {
                         showToastNotification("Vui lòng chọn ít nhất 1 phòng để dọn dẹp")
+                        self.state.cleanState = prevCleanState
+                        self.state.cleanStateText = prevCleanText
                         self.isExecutingCommand = false
                         return
                     }
@@ -438,9 +482,12 @@ public final class RobotControlViewModel: ObservableObject {
                     try await deviceService.clean(device: device, action: .start, cleanCount: count)
                     self.showToastNotification("Bắt đầu dọn dẹp toàn bộ nhà\(countSuffix)")
                 }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
                 await self.refreshState()
             } catch {
                 HapticManager.shared.error()
+                self.state.cleanState = prevCleanState
+                self.state.cleanStateText = prevCleanText
                 self.showToastNotification("Lỗi: \(error.localizedDescription)")
             }
             self.isExecutingCommand = false
@@ -449,14 +496,34 @@ public final class RobotControlViewModel: ObservableObject {
     
     public func triggerClean(action: CleanAction) {
         HapticManager.shared.medium()
+        pausePolling(forSeconds: 4.0)
+        let prevCleanState = self.state.cleanState
+        let prevCleanText = self.state.cleanStateText
+        
+        // Cập nhật trạng thái tức thì tương ứng hành động
+        switch action {
+        case .pause:
+            self.state.cleanState = "pause"
+            self.state.cleanStateText = "Đang tạm dừng"
+        case .resume, .start:
+            self.state.cleanState = "clean"
+            self.state.cleanStateText = "Đang dọn dẹp"
+        case .stop:
+            self.state.cleanState = "stop"
+            self.state.cleanStateText = "Đã dừng dọn"
+        }
+        
         isExecutingCommand = true
         Task {
             do {
                 try await deviceService.clean(device: device, action: action)
                 self.showToastNotification("Đã gửi lệnh: \(action.title)")
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
                 await self.refreshState()
             } catch {
                 HapticManager.shared.error()
+                self.state.cleanState = prevCleanState
+                self.state.cleanStateText = prevCleanText
                 self.showToastNotification("Lỗi: \(error.localizedDescription)")
             }
             self.isExecutingCommand = false
@@ -532,14 +599,25 @@ public final class RobotControlViewModel: ObservableObject {
     
     public func triggerCharge() {
         HapticManager.shared.medium()
+        pausePolling(forSeconds: 4.0)
+        let prevCleanState = self.state.cleanState
+        let prevCleanText = self.state.cleanStateText
+        
+        // Cập nhật giao diện về sạc tức thì 0ms
+        self.state.cleanState = "go_charging"
+        self.state.cleanStateText = "Đang về trạm sạc"
+        
         isExecutingCommand = true
         Task {
             do {
                 try await deviceService.charge(device: device)
                 self.showToastNotification("Robot đang quay về trạm sạc...")
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
                 await self.refreshState()
             } catch {
                 HapticManager.shared.error()
+                self.state.cleanState = prevCleanState
+                self.state.cleanStateText = prevCleanText
                 self.showToastNotification("Lỗi: \(error.localizedDescription)")
             }
             self.isExecutingCommand = false
@@ -574,35 +652,47 @@ public final class RobotControlViewModel: ObservableObject {
     
     // MARK: - Settings
     public func setFanSpeed(_ speed: FanSpeedLevel) {
+        HapticManager.shared.selection()
+        let prev = self.state.fanSpeed
+        self.state.fanSpeed = speed.rawValue
+        pausePolling(forSeconds: 3.0)
         Task {
             do {
                 try await deviceService.setFanSpeed(device: device, speed: speed)
-                self.state.fanSpeed = speed.rawValue
                 self.showToastNotification("Đã đổi lực hút: \(speed.title)")
             } catch {
+                self.state.fanSpeed = prev
                 self.showToastNotification("Lỗi: \(error.localizedDescription)")
             }
         }
     }
     
     public func setWaterAmount(_ amount: Int) {
+        HapticManager.shared.selection()
+        let prev = self.state.waterAmount
+        self.state.waterAmount = amount
+        pausePolling(forSeconds: 3.0)
         Task {
             do {
                 try await deviceService.setWaterInfo(device: device, amount: amount)
-                self.state.waterAmount = amount
                 self.showToastNotification("Đã đổi lượng nước mức \(amount)")
             } catch {
+                self.state.waterAmount = prev
                 self.showToastNotification("Lỗi: \(error.localizedDescription)")
             }
         }
     }
     
     public func setVolume(_ volume: Int) {
+        let prev = self.state.volume
+        self.state.volume = volume
+        pausePolling(forSeconds: 3.0)
         Task {
             do {
                 try await deviceService.setVolume(device: device, volume: volume)
-                self.state.volume = volume
+                self.showToastNotification("Đã đổi âm lượng: \(volume)%")
             } catch {
+                self.state.volume = prev
                 self.showToastNotification("Lỗi: \(error.localizedDescription)")
             }
         }
@@ -610,12 +700,14 @@ public final class RobotControlViewModel: ObservableObject {
     
     public func toggleChildLock() {
         let newTarget = !state.childLock
+        self.state.childLock = newTarget
+        pausePolling(forSeconds: 3.0)
         Task {
             do {
                 try await deviceService.setChildLock(device: device, enabled: newTarget)
-                self.state.childLock = newTarget
                 self.showToastNotification("Khóa trẻ em: \(newTarget ? "Đã bật" : "Đã tắt")")
             } catch {
+                self.state.childLock = !newTarget
                 self.showToastNotification("Lỗi: \(error.localizedDescription)")
             }
         }
@@ -623,12 +715,14 @@ public final class RobotControlViewModel: ObservableObject {
     
     public func toggleCarpetBoost() {
         let newTarget = !state.carpetAutoBoost
+        self.state.carpetAutoBoost = newTarget
+        pausePolling(forSeconds: 3.0)
         Task {
             do {
                 try await deviceService.setCarpetBoost(device: device, enabled: newTarget)
-                self.state.carpetAutoBoost = newTarget
                 self.showToastNotification("Tự tăng áp lên thảm: \(newTarget ? "Đã bật" : "Đã tắt")")
             } catch {
+                self.state.carpetAutoBoost = !newTarget
                 self.showToastNotification("Lỗi: \(error.localizedDescription)")
             }
         }

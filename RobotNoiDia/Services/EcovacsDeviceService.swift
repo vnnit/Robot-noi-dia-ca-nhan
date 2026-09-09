@@ -9,8 +9,9 @@ public final class EcovacsDeviceService {
     
     private init() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 15.0
-        config.timeoutIntervalForResource = 25.0
+        config.timeoutIntervalForRequest = 8.0
+        config.timeoutIntervalForResource = 15.0
+        config.httpMaximumConnectionsPerHost = 12
         self.session = URLSession(configuration: config)
     }
     
@@ -286,7 +287,8 @@ public final class EcovacsDeviceService {
         device: DeviceModel,
         cmdName: String,
         payloadArgs: [String: Any] = [:],
-        payloadType: String = "j"
+        payloadType: String = "j",
+        priority: String = "1"
     ) async throws -> [String: Any] {
         let creds = try await authService.ensureValidToken()
         
@@ -311,7 +313,7 @@ public final class EcovacsDeviceService {
         
         var innerPayload: [String: Any] = [
             "header": [
-                "pri": "1",
+                "pri": priority,
                 "ts": Int(Date().timeIntervalSince1970),
                 "tzm": 480,
                 "ver": "0.0.50"
@@ -340,7 +342,7 @@ public final class EcovacsDeviceService {
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = 10.0
+        request.timeoutInterval = (priority == "110") ? 8.0 : 5.0
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Eco-Iot-Direct", forHTTPHeaderField: "User-Agent")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -419,7 +421,7 @@ public final class EcovacsDeviceService {
     }
     
     // MARK: - 3. Lấy Trạng thái Thời gian thực (Live State)
-    public func getDeviceState(device: DeviceModel, full: Bool = false, existingState: DeviceState? = nil) async -> DeviceState {
+    public func getDeviceState(device: DeviceModel, full: Bool = false, existingState: DeviceState? = nil) async -> (state: DeviceState, isLiveSuccess: Bool) {
         var state = existingState ?? DeviceState.initial
         
         async let battRes = try? executeCommand(device: device, cmdName: "getBattery")
@@ -431,11 +433,11 @@ public final class EcovacsDeviceService {
         let hasCleanSuccess = (clean?["ret"] as? String)?.lowercased() == "ok"
         let hasChargeSuccess = (charge?["ret"] as? String)?.lowercased() == "ok"
         
-        if !hasBattSuccess && !hasCleanSuccess && !hasChargeSuccess {
-            state.cleanState = "offline"
-            state.cleanStateText = "Ngoại tuyến (Offline)"
-            state.isCharging = false
-            return state
+        let isLiveSuccess = hasBattSuccess || hasCleanSuccess || hasChargeSuccess
+        if !isLiveSuccess {
+            // Không đánh dấu offline khi mạng trễ hoặc tạm thời không phản hồi.
+            // Giữ nguyên trạng thái trước đó để tránh nhấp nháy giao diện.
+            return (state, false)
         }
         
         // Pin
@@ -520,7 +522,7 @@ public final class EcovacsDeviceService {
             }
         }
         
-        return state
+        return (state, true)
     }
     
     // MARK: - 4. Các lệnh điều khiển dọn dẹp & sạc pin
@@ -538,7 +540,7 @@ public final class EcovacsDeviceService {
                 _ = try? await setCleanCount(device: device, count: 1)
             }
         }
-        _ = try await executeCommand(device: device, cmdName: "clean", payloadArgs: args)
+        _ = try await executeCommand(device: device, cmdName: "clean", payloadArgs: args, priority: "110")
     }
     
     /// Dọn dẹp theo phòng đã chọn (Spot / Room Cleaning)
@@ -562,7 +564,7 @@ public final class EcovacsDeviceService {
             args["count"] = 1
             _ = try? await setCleanCount(device: device, count: 1)
         }
-        _ = try await executeCommand(device: device, cmdName: "clean", payloadArgs: args)
+        _ = try await executeCommand(device: device, cmdName: "clean", payloadArgs: args, priority: "110")
     }
     
     /// Dọn dẹp theo ô khoanh vùng tự do trên bản đồ (Area Clean Box)
@@ -586,11 +588,11 @@ public final class EcovacsDeviceService {
             args["count"] = 1
             _ = try? await setCleanCount(device: device, count: 1)
         }
-        _ = try await executeCommand(device: device, cmdName: "clean", payloadArgs: args)
+        _ = try await executeCommand(device: device, cmdName: "clean", payloadArgs: args, priority: "110")
     }
     
     public func setCleanCount(device: DeviceModel, count: Int) async throws {
-        _ = try? await executeCommand(device: device, cmdName: "setCleanCount", payloadArgs: ["count": count])
+        _ = try? await executeCommand(device: device, cmdName: "setCleanCount", payloadArgs: ["count": count], priority: "110")
     }
     
     // MARK: - Điều Khiển Thủ Công (Manual Remote D-Pad)
@@ -620,40 +622,40 @@ public final class EcovacsDeviceService {
             args[k] = v
         }
         
-        _ = try await executeCommand(device: device, cmdName: "move", payloadArgs: args)
+        _ = try await executeCommand(device: device, cmdName: "move", payloadArgs: args, priority: "110")
     }
     
     public func charge(device: DeviceModel) async throws {
-        _ = try await executeCommand(device: device, cmdName: "charge", payloadArgs: ["act": "go"])
+        _ = try await executeCommand(device: device, cmdName: "charge", payloadArgs: ["act": "go"], priority: "110")
     }
     
     public func playSound(device: DeviceModel) async throws {
-        _ = try await executeCommand(device: device, cmdName: "playSound", payloadArgs: [:])
+        _ = try await executeCommand(device: device, cmdName: "playSound", payloadArgs: [:], priority: "110")
     }
     
     public func relocate(device: DeviceModel) async throws {
-        _ = try await executeCommand(device: device, cmdName: "setRelocationState", payloadArgs: [:])
+        _ = try await executeCommand(device: device, cmdName: "setRelocationState", payloadArgs: [:], priority: "110")
     }
     
     // MARK: - 5. Cài đặt lực hút, nước, âm lượng, khóa trẻ em
     public func setFanSpeed(device: DeviceModel, speed: FanSpeedLevel) async throws {
-        _ = try await executeCommand(device: device, cmdName: "setSpeed", payloadArgs: ["speed": speed.rawValue])
+        _ = try await executeCommand(device: device, cmdName: "setSpeed", payloadArgs: ["speed": speed.rawValue], priority: "110")
     }
     
     public func setWaterInfo(device: DeviceModel, amount: Int) async throws {
-        _ = try await executeCommand(device: device, cmdName: "setWaterInfo", payloadArgs: ["amount": amount])
+        _ = try await executeCommand(device: device, cmdName: "setWaterInfo", payloadArgs: ["amount": amount], priority: "110")
     }
     
     public func setVolume(device: DeviceModel, volume: Int) async throws {
-        _ = try await executeCommand(device: device, cmdName: "setVolume", payloadArgs: ["volume": volume])
+        _ = try await executeCommand(device: device, cmdName: "setVolume", payloadArgs: ["volume": volume], priority: "110")
     }
     
     public func setChildLock(device: DeviceModel, enabled: Bool) async throws {
-        _ = try await executeCommand(device: device, cmdName: "setChildLock", payloadArgs: ["enable": enabled ? 1 : 0])
+        _ = try await executeCommand(device: device, cmdName: "setChildLock", payloadArgs: ["enable": enabled ? 1 : 0], priority: "110")
     }
     
     public func setCarpetBoost(device: DeviceModel, enabled: Bool) async throws {
-        _ = try await executeCommand(device: device, cmdName: "setCarpetAutoFanBoost", payloadArgs: ["enable": enabled ? 1 : 0])
+        _ = try await executeCommand(device: device, cmdName: "setCarpetAutoFanBoost", payloadArgs: ["enable": enabled ? 1 : 0], priority: "110")
     }
     
     // MARK: - 6. Quản lý phụ kiện & Reset tuổi thọ
@@ -1177,12 +1179,12 @@ public final class EcovacsDeviceService {
         switch action {
         case .emptyDustbin:
             // 1. Thử lệnh setAutoEmpty ("act": "start") trước (chuẩn cho dòng T9/T8/N8)
-            let res = try? await executeCommand(device: device, cmdName: "setAutoEmpty", payloadArgs: ["act": "start"])
+            let res = try? await executeCommand(device: device, cmdName: "setAutoEmpty", payloadArgs: ["act": "start"], priority: "110")
             if let r = res, r["ret"] as? String == "ok" {
                 return
             }
             // 2. Thử tiếp lệnh stationAction (act: 1, type: 1) cho dòng Omni/Turbo
-            _ = try await executeCommand(device: device, cmdName: "stationAction", payloadArgs: ["act": 1, "type": 1])
+            _ = try await executeCommand(device: device, cmdName: "stationAction", payloadArgs: ["act": 1, "type": 1], priority: "110")
             return
         case .startMopWash:
             act = 1
@@ -1197,7 +1199,7 @@ public final class EcovacsDeviceService {
             act = 0
             type = 3
         }
-        _ = try await executeCommand(device: device, cmdName: "stationAction", payloadArgs: ["act": act, "type": type])
+        _ = try await executeCommand(device: device, cmdName: "stationAction", payloadArgs: ["act": act, "type": type], priority: "110")
     }
     
     /// Kiểm tra phát hiện robot có dock hút rác tự động hay không (Auto-Empty Dock Detection)
