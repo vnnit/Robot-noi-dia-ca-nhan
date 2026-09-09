@@ -82,6 +82,94 @@ public struct SettingsTabView: View {
                                     detail: "Tuổi thọ chổi, màng lọc, giẻ lau"
                                 )
                             }
+                            
+                            Divider().padding(.leading, 50)
+                            
+                            Button(action: {
+                                HapticManager.shared.light()
+                                viewModel.showRemoteControlSheet = true
+                            }) {
+                                settingItemRow(
+                                    icon: "gamecontroller.fill",
+                                    iconColor: Color(red: 0.09, green: 0.47, blue: 1.0),
+                                    title: "Điều khiển thủ công (Remote D-Pad)",
+                                    detail: "Lái robot bằng phím ảo khi kẹt gầm giường/tủ"
+                                )
+                            }
+                            
+                            Divider().padding(.leading, 50)
+                            
+                            Button(action: {
+                                HapticManager.shared.light()
+                                viewModel.showMapBackupSheet = true
+                            }) {
+                                settingItemRow(
+                                    icon: "square.and.arrow.down.on.square.fill",
+                                    iconColor: Color.teal,
+                                    title: "Sao lưu & Khôi phục Bản đồ (Đa Tầng)",
+                                    detail: "Lưu bản đồ vàng chống loạn map, nạp lại 1 chạm"
+                                )
+                            }
+                        }
+                        .background(Color.white)
+                        .cornerRadius(14)
+                        .padding(.horizontal, 16)
+                        
+                        // Nhóm: Nhận diện Thảm trải sàn (Carpet Settings)
+                        VStack(spacing: 0) {
+                            HStack(spacing: 14) {
+                                Image(systemName: "square.dashed")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(Color.indigo)
+                                    .frame(width: 24)
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Tự tăng lực hút trên thảm (Carpet Boost)")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(Color(white: 0.15))
+                                    Text("Tự đẩy lên Max+ khi leo lên thảm để hút sâu")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.gray)
+                                }
+                                
+                                Spacer()
+                                
+                                Toggle("", isOn: Binding(
+                                    get: { viewModel.state.carpetAutoBoost },
+                                    set: { viewModel.updateCarpetPressureBoost($0) }
+                                ))
+                                .labelsHidden()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            
+                            Divider().padding(.leading, 50)
+                            
+                            HStack(spacing: 14) {
+                                Image(systemName: "drop.triangle")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(Color.cyan)
+                                    .frame(width: 24)
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Né thảm khi lau ướt (Carpet Avoidance)")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(Color(white: 0.15))
+                                    Text("Ngăn robot làm ướt và bẩn thảm khi đang gắn giẻ")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.gray)
+                                }
+                                
+                                Spacer()
+                                
+                                Toggle("", isOn: Binding(
+                                    get: { viewModel.state.carpetAvoidance },
+                                    set: { viewModel.updateCarpetAvoidance($0) }
+                                ))
+                                .labelsHidden()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
                         }
                         .background(Color.white)
                         .cornerRadius(14)

@@ -51,6 +51,9 @@ public final class RobotControlViewModel: ObservableObject {
     @Published public var showMoreSettings: Bool = false
     @Published public var showScheduleSheet: Bool = false
     @Published public var showStationSettingsSheet: Bool = false
+    @Published public var showRemoteControlSheet: Bool = false
+    @Published public var showMapBackupSheet: Bool = false
+    @Published public var mapBackups: [MapBackupItem] = []
     @Published public var isEditingBoundaries: Bool = false
     
     @Published public var isExecutingCommand: Bool = false
@@ -155,6 +158,12 @@ public final class RobotControlViewModel: ObservableObject {
         if device.did.contains("d3fe81e0") {
             UserDefaults.standard.set(true, forKey: "has_auto_empty_\(device.did)")
         }
+        
+        // Nạp cài đặt thảm & bản đồ sao lưu đa tầng
+        let carpet = deviceService.getCarpetSettings(device: device)
+        self.state.carpetAutoBoost = carpet.boost
+        self.state.carpetAvoidance = carpet.avoidance
+        self.mapBackups = deviceService.getMapBackups(did: device.did)
         
         setupMqttListener()
     }
@@ -340,6 +349,8 @@ public final class RobotControlViewModel: ObservableObject {
         }
         
         isExecutingCommand = true
+        let count = state.cleanCount
+        let countSuffix = count == 2 ? " (Đan lưới X2)" : ""
         Task {
             do {
                 switch cleanModeTab {
@@ -350,21 +361,22 @@ public final class RobotControlViewModel: ObservableObject {
                         self.isExecutingCommand = false
                         return
                     }
-                    try await deviceService.cleanRooms(device: device, roomIds: ids)
+                    try await deviceService.cleanRooms(device: device, roomIds: ids, cleanCount: count)
                     let names = ids.compactMap { id in availableRooms.first(where: { $0.index == id })?.name }.joined(separator: ", ")
-                    self.showToastNotification("Bắt đầu dọn: \(names)")
+                    self.showToastNotification("Bắt đầu dọn\(countSuffix): \(names)")
                 case "custom":
                     try await deviceService.cleanCustomArea(
                         device: device,
                         x1: customAreaBox.x1,
                         y1: customAreaBox.y1,
                         x2: customAreaBox.x2,
-                        y2: customAreaBox.y2
+                        y2: customAreaBox.y2,
+                        cleanCount: count
                     )
-                    self.showToastNotification("Bắt đầu dọn khoanh vùng (\(customAreaBox.formattedAreaM2))")
+                    self.showToastNotification("Bắt đầu dọn khoanh vùng\(countSuffix) (\(customAreaBox.formattedAreaM2))")
                 default:
-                    try await deviceService.clean(device: device, action: .start)
-                    self.showToastNotification("Bắt đầu dọn dẹp toàn bộ nhà")
+                    try await deviceService.clean(device: device, action: .start, cleanCount: count)
+                    self.showToastNotification("Bắt đầu dọn dẹp toàn bộ nhà\(countSuffix)")
                 }
                 await self.refreshState()
             } catch {
@@ -787,6 +799,100 @@ public final class RobotControlViewModel: ObservableObject {
         self.isLogsLoading = false
     }
     
+    // MARK: - Điều Khiển Thủ Công (Manual Remote D-Pad)
+    public func sendManualMove(direction: String) {
+        HapticManager.shared.light()
+        Task {
+            do {
+                try await deviceService.manualMove(device: device, direction: direction)
+            } catch {
+                HapticManager.shared.error()
+                self.showToastNotification("Lỗi di chuyển: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    // MARK: - Chế Độ Dọn Sạch Sâu X2 (Deep Clean 2-Pass Grid)
+    public func toggleCleanCount() {
+        HapticManager.shared.selection()
+        if state.cleanCount == 1 {
+            state.cleanCount = 2
+            cleanTimes = 2
+            showToastNotification("Chế độ dọn: 2 Lần đan lưới bàn cờ (Sạch sâu)")
+        } else {
+            state.cleanCount = 1
+            cleanTimes = 1
+            showToastNotification("Chế độ dọn: 1 Lần tiêu chuẩn")
+        }
+        Task {
+            try? await deviceService.setCleanCount(device: device, count: state.cleanCount)
+        }
+    }
+    
+    // MARK: - Nhận Diện Thảm Trải Sàn (Carpet Boost & Avoidance)
+    public func updateCarpetPressureBoost(_ enabled: Bool) {
+        HapticManager.shared.light()
+        state.carpetAutoBoost = enabled
+        Task {
+            try? await deviceService.setCarpetPressure(device: device, enabled: enabled)
+            self.showToastNotification("Tự tăng lực hút trên thảm: \(enabled ? "Bật" : "Tắt")")
+        }
+    }
+    
+    public func updateCarpetAvoidance(_ enabled: Bool) {
+        HapticManager.shared.light()
+        state.carpetAvoidance = enabled
+        Task {
+            try? await deviceService.setCarpetAvoidance(device: device, enabled: enabled)
+            self.showToastNotification("Né thảm khi lau ướt: \(enabled ? "Bật" : "Tắt")")
+        }
+    }
+    
+    // MARK: - Sao Lưu & Khôi Phục Bản Đồ Đa Tầng (Map Backup & Restore)
+    public func createMapBackup(name: String, floorName: String) {
+        HapticManager.shared.success()
+        let backup = MapBackupItem(
+            name: name.isEmpty ? "Bản đồ \(floorName)" : name,
+            floorName: floorName,
+            date: Date(),
+            svgString: self.mapSvgString,
+            viewBox: self.mapViewBoxString,
+            rooms: self.availableRooms,
+            virtualWalls: self.state.virtualWalls,
+            restrictedZones: self.state.restrictedZones
+        )
+        deviceService.saveMapBackup(did: device.did, item: backup)
+        self.mapBackups = deviceService.getMapBackups(did: device.did)
+        showToastNotification("Đã lưu bản sao lưu: \(backup.name)")
+    }
+    
+    public func restoreMapBackup(_ item: MapBackupItem) {
+        HapticManager.shared.medium()
+        self.mapSvgString = item.svgString
+        self.mapViewBoxString = item.viewBox
+        self.availableRooms = item.rooms
+        self.state.virtualWalls = item.virtualWalls
+        self.state.restrictedZones = item.restrictedZones
+        
+        // Lưu lại persistence
+        deviceService.saveVirtualBoundaries(device: device, walls: item.virtualWalls, zones: item.restrictedZones)
+        
+        Task {
+            // Tái thiết lập tường ảo & tái định vị
+            try? await deviceService.setVirtualWalls(device: device, walls: item.virtualWalls)
+            try? await deviceService.setRestrictedZones(device: device, zones: item.restrictedZones)
+            try? await deviceService.relocate(device: device)
+            self.showToastNotification("Đã khôi phục thành công: \(item.name)")
+        }
+    }
+    
+    public func deleteMapBackup(id: String) {
+        HapticManager.shared.light()
+        deviceService.deleteMapBackup(did: device.did, id: id)
+        self.mapBackups = deviceService.getMapBackups(did: device.did)
+        showToastNotification("Đã xóa bản sao lưu")
+    }
+
     // MARK: - Toast
     public func showToastNotification(_ msg: String) {
         self.toastMessage = msg

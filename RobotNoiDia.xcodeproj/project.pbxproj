@@ -38,6 +38,8 @@
 		A10030 /* ScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10030 /* ScheduleView.swift */; };
 		A10031 /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10031 /* HapticManager.swift */; };
 		A10032 /* StationSettingsSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10032 /* StationSettingsSheetView.swift */; };
+		A10033 /* RemoteControlSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10033 /* RemoteControlSheetView.swift */; };
+		A10034 /* MapBackupSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10034 /* MapBackupSheetView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -74,6 +76,8 @@
 		B10030 /* ScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Schedule/ScheduleView.swift"; sourceTree = "<group>"; };
 		B10031 /* HapticManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticManager.swift; sourceTree = "<group>"; };
 		B10032 /* StationSettingsSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Control/StationSettingsSheetView.swift"; sourceTree = "<group>"; };
+		B10033 /* RemoteControlSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Control/RemoteControlSheetView.swift"; sourceTree = "<group>"; };
+		B10034 /* MapBackupSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Control/MapBackupSheetView.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -185,6 +189,8 @@
 				B10025 /* StatusBadgeView.swift */,
 				B10030 /* ScheduleView.swift */,
 				B10032 /* StationSettingsSheetView.swift */,
+				B10033 /* RemoteControlSheetView.swift */,
+				B10034 /* MapBackupSheetView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -297,6 +303,8 @@
 				A10030 /* ScheduleView.swift in Sources */,
 				A10031 /* HapticManager.swift in Sources */,
 				A10032 /* StationSettingsSheetView.swift in Sources */,
+				A10033 /* RemoteControlSheetView.swift in Sources */,
+				A10034 /* MapBackupSheetView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -373,7 +381,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 34;
+				CURRENT_PROJECT_VERSION = 35;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -383,7 +391,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.31;
+				MARKETING_VERSION = 1.1.32;
 				PRODUCT_BUNDLE_IDENTIFIER = com.robot.noidia;
 				PRODUCT_NAME = RobotNoiDia;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -398,7 +406,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 34;
+				CURRENT_PROJECT_VERSION = 35;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -408,7 +416,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.31;
+				MARKETING_VERSION = 1.1.32;
 				PRODUCT_BUNDLE_IDENTIFIER = com.robot.noidia;
 				PRODUCT_NAME = RobotNoiDia;
 				SWIFT_EMIT_LOC_STRINGS = YES;

@@ -343,42 +343,103 @@ public final class EcovacsDeviceService {
     }
     
     // MARK: - 4. Các lệnh điều khiển dọn dẹp & sạc pin
-    public func clean(device: DeviceModel, action: CleanAction) async throws {
+    public func clean(device: DeviceModel, action: CleanAction, cleanCount: Int = 1) async throws {
         var args: [String: Any] = ["act": action.rawValue]
         if action == .start {
             args["type"] = "auto"
+            if cleanCount == 2 {
+                args["cleanCount"] = 2
+                args["count"] = 2
+                _ = try? await setCleanCount(device: device, count: 2)
+            } else {
+                args["cleanCount"] = 1
+                args["count"] = 1
+                _ = try? await setCleanCount(device: device, count: 1)
+            }
         }
         _ = try await executeCommand(device: device, cmdName: "clean", payloadArgs: args)
     }
     
     /// Dọn dẹp theo phòng đã chọn (Spot / Room Cleaning)
-    public func cleanRooms(device: DeviceModel, roomIds: [Int]) async throws {
+    public func cleanRooms(device: DeviceModel, roomIds: [Int], cleanCount: Int = 1) async throws {
         guard !roomIds.isEmpty else {
-            try await clean(device: device, action: .start)
+            try await clean(device: device, action: .start, cleanCount: cleanCount)
             return
         }
         let idsStr = roomIds.map { String($0) }.joined(separator: ",")
-        let args: [String: Any] = [
+        var args: [String: Any] = [
             "act": "start",
             "type": "spot",
             "content": idsStr
         ]
+        if cleanCount == 2 {
+            args["cleanCount"] = 2
+            args["count"] = 2
+            _ = try? await setCleanCount(device: device, count: 2)
+        } else {
+            args["cleanCount"] = 1
+            args["count"] = 1
+            _ = try? await setCleanCount(device: device, count: 1)
+        }
         _ = try await executeCommand(device: device, cmdName: "clean", payloadArgs: args)
     }
     
     /// Dọn dẹp theo ô khoanh vùng tự do trên bản đồ (Area Clean Box)
-    public func cleanCustomArea(device: DeviceModel, x1: Double, y1: Double, x2: Double, y2: Double) async throws {
+    public func cleanCustomArea(device: DeviceModel, x1: Double, y1: Double, x2: Double, y2: Double, cleanCount: Int = 1) async throws {
         let minX = min(x1, x2)
         let minY = min(y1, y2)
         let maxX = max(x1, x2)
         let maxY = max(y1, y2)
         let coordsStr = String(format: "%.1f,%.1f,%.1f,%.1f", minX, minY, maxX, maxY)
-        let args: [String: Any] = [
+        var args: [String: Any] = [
             "act": "start",
             "type": "custom",
             "content": coordsStr
         ]
+        if cleanCount == 2 {
+            args["cleanCount"] = 2
+            args["count"] = 2
+            _ = try? await setCleanCount(device: device, count: 2)
+        } else {
+            args["cleanCount"] = 1
+            args["count"] = 1
+            _ = try? await setCleanCount(device: device, count: 1)
+        }
         _ = try await executeCommand(device: device, cmdName: "clean", payloadArgs: args)
+    }
+    
+    public func setCleanCount(device: DeviceModel, count: Int) async throws {
+        _ = try? await executeCommand(device: device, cmdName: "setCleanCount", payloadArgs: ["count": count])
+    }
+    
+    // MARK: - Điều Khiển Thủ Công (Manual Remote D-Pad)
+    public func manualMove(device: DeviceModel, direction: String) async throws {
+        var act = "stop"
+        var additionalArgs: [String: Any] = [:]
+        
+        switch direction {
+        case "forward":
+            act = "forward"
+            additionalArgs["speed"] = 1
+        case "backward":
+            act = "backward"
+            additionalArgs["speed"] = 1
+        case "left":
+            act = "turn_left"
+            additionalArgs["angle"] = -45
+        case "right":
+            act = "turn_right"
+            additionalArgs["angle"] = 45
+        default:
+            act = "stop"
+        }
+        
+        var args: [String: Any] = ["act": act]
+        for (k, v) in additionalArgs {
+            args[k] = v
+        }
+        
+        _ = try await executeCommand(device: device, cmdName: "move", payloadArgs: args)
     }
     
     public func charge(device: DeviceModel) async throws {
@@ -1084,7 +1145,59 @@ public final class EcovacsDeviceService {
         }
     }
 
+    // MARK: - 14. Nhận Diện Thảm Trải Sàn (Carpet Auto-Boost & Avoidance)
+    public func setCarpetPressure(device: DeviceModel, enabled: Bool) async throws {
+        let val = enabled ? 1 : 0
+        UserDefaults.standard.set(enabled, forKey: "carpet_boost_\(device.did)")
+        _ = try? await executeCommand(device: device, cmdName: "setCarpetPressure", payloadArgs: ["enable": val])
+        _ = try? await executeCommand(device: device, cmdName: "setAutoBoostSuction", payloadArgs: ["enable": val])
+        _ = try? await executeCommand(device: device, cmdName: "setCarpetParam", payloadArgs: ["enable": val])
+    }
     
+    public func setCarpetAvoidance(device: DeviceModel, enabled: Bool) async throws {
+        let val = enabled ? 1 : 0
+        UserDefaults.standard.set(enabled, forKey: "carpet_avoidance_\(device.did)")
+        _ = try? await executeCommand(device: device, cmdName: "setCarpetAvoidance", payloadArgs: ["enable": val])
+    }
+    
+    public func getCarpetSettings(device: DeviceModel) -> (boost: Bool, avoidance: Bool) {
+        let boostKey = "carpet_boost_\(device.did)"
+        let avoidKey = "carpet_avoidance_\(device.did)"
+        let boost = UserDefaults.standard.object(forKey: boostKey) as? Bool ?? true
+        let avoidance = UserDefaults.standard.object(forKey: avoidKey) as? Bool ?? false
+        return (boost, avoidance)
+    }
+
+    // MARK: - 15. Sao Lưu & Khôi Phục Bản Đồ Đa Tầng (Map Backup & Restore)
+    private func mapBackupStorageKey(did: String) -> String {
+        return "golden_map_backups_\(did)"
+    }
+    
+    public func getMapBackups(did: String) -> [MapBackupItem] {
+        guard let data = UserDefaults.standard.data(forKey: mapBackupStorageKey(did: did)),
+              let items = try? JSONDecoder().decode([MapBackupItem].self, from: data) else {
+            return []
+        }
+        return items
+    }
+    
+    public func saveMapBackup(did: String, item: MapBackupItem) {
+        var items = getMapBackups(did: did)
+        items.removeAll { $0.id == item.id }
+        items.insert(item, at: 0)
+        if let data = try? JSONEncoder().encode(items) {
+            UserDefaults.standard.set(data, forKey: mapBackupStorageKey(did: did))
+        }
+    }
+    
+    public func deleteMapBackup(did: String, id: String) {
+        var items = getMapBackups(did: did)
+        items.removeAll { $0.id == id }
+        if let data = try? JSONEncoder().encode(items) {
+            UserDefaults.standard.set(data, forKey: mapBackupStorageKey(did: did))
+        }
+    }
+
     // MARK: - Helper
     private func extractBodyData(_ json: [String: Any]) -> [String: Any]? {
         if let resp = json["resp"] as? [String: Any], let body = resp["body"] as? [String: Any], let data = body["data"] as? [String: Any] {

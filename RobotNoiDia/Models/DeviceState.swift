@@ -96,6 +96,8 @@ public struct DeviceState: Codable {
     public var volume: Int // 0..10
     public var childLock: Bool
     public var carpetAutoBoost: Bool
+    public var carpetAvoidance: Bool
+    public var cleanCount: Int // 1 (tiêu chuẩn), 2 (đan lưới bàn cờ x2)
     
     public var errorCode: Int
     public var errorText: String
@@ -139,6 +141,8 @@ public struct DeviceState: Codable {
             volume: 7,
             childLock: false,
             carpetAutoBoost: true,
+            carpetAvoidance: false,
+            cleanCount: 1,
             errorCode: 0,
             errorText: "Bình thường",
             fwVer: "v1.9.7"
@@ -187,6 +191,47 @@ public struct CustomAreaBox: Codable, Hashable {
         // Quy đổi tọa độ viewBox sang m² ước tính (mỗi đơn vị ~ 0.1m)
         let area = (width * 0.1) * (height * 0.1)
         return String(format: "%.1f m²", max(1.0, area))
+    }
+}
+
+// MARK: - Model Bản Đồ Sao Lưu Đa Tầng (Golden Map Backup)
+public struct MapBackupItem: Identifiable, Codable, Hashable {
+    public let id: String
+    public var name: String
+    public var floorName: String
+    public var date: Date
+    public var svgString: String
+    public var viewBox: String
+    public var rooms: [CleaningRoom]
+    public var virtualWalls: [VirtualWall]
+    public var restrictedZones: [RestrictedZone]
+    
+    public init(
+        id: String = UUID().uuidString,
+        name: String,
+        floorName: String = "Tầng 1",
+        date: Date = Date(),
+        svgString: String,
+        viewBox: String,
+        rooms: [CleaningRoom] = [],
+        virtualWalls: [VirtualWall] = [],
+        restrictedZones: [RestrictedZone] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.floorName = floorName
+        self.date = date
+        self.svgString = svgString
+        self.viewBox = viewBox
+        self.rooms = rooms
+        self.virtualWalls = virtualWalls
+        self.restrictedZones = restrictedZones
+    }
+    
+    public var formattedDate: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm • dd/MM/yyyy"
+        return formatter.string(from: date)
     }
 }
 

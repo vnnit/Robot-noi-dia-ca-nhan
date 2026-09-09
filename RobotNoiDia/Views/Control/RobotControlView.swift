@@ -71,6 +71,12 @@ public struct RobotControlView: View {
         .sheet(isPresented: $viewModel.showStationSettingsSheet) {
             StationSettingsSheetView(viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.showRemoteControlSheet) {
+            RemoteControlSheetView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.showMapBackupSheet) {
+            MapBackupSheetView(viewModel: viewModel)
+        }
         .alert("Đổi tên Robot", isPresented: $showRenameAlert) {
             TextField("Nhập tên mới", text: $newNameText)
             Button("Lưu") {
@@ -261,6 +267,34 @@ public struct RobotControlView: View {
                 Image(systemName: "calendar.badge.clock")
                     .font(.system(size: 16))
                     .foregroundColor(Color.orange)
+                    .frame(width: 42, height: 42)
+                    .background(Color.white.opacity(0.95))
+                    .clipShape(Circle())
+                    .shadow(color: Color.black.opacity(0.08), radius: 5, y: 2)
+            }
+            
+            // Nút Remote D-Pad thủ công
+            Button(action: {
+                HapticManager.shared.light()
+                viewModel.showRemoteControlSheet = true
+            }) {
+                Image(systemName: "gamecontroller.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                    .frame(width: 42, height: 42)
+                    .background(Color.white.opacity(0.95))
+                    .clipShape(Circle())
+                    .shadow(color: Color.black.opacity(0.08), radius: 5, y: 2)
+            }
+            
+            // Nút Sao lưu & Khôi phục Map
+            Button(action: {
+                HapticManager.shared.light()
+                viewModel.showMapBackupSheet = true
+            }) {
+                Image(systemName: "square.and.arrow.down.on.square.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(Color.teal)
                     .frame(width: 42, height: 42)
                     .background(Color.white.opacity(0.95))
                     .clipShape(Circle())
@@ -477,6 +511,45 @@ public struct RobotControlView: View {
             .padding(3)
             .background(Color(red: 0.94, green: 0.95, blue: 0.97))
             .cornerRadius(12)
+            .padding(.horizontal, 16)
+            
+            // Nút Chuyển Đổi Dọn 1 Lần / 2 Lần Đan Lưới Bàn Cờ & Phím Lái D-Pad
+            HStack {
+                Button(action: {
+                    viewModel.toggleCleanCount()
+                }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "repeat")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(viewModel.state.cleanCount == 2 ? "2 Lượt Đan Lưới (Sạch Sâu)" : "1 Lượt Tiêu Chuẩn")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundColor(viewModel.state.cleanCount == 2 ? Color.purple : Color(red: 0.2, green: 0.2, blue: 0.25))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(viewModel.state.cleanCount == 2 ? Color.purple.opacity(0.12) : Color(red: 0.94, green: 0.95, blue: 0.97))
+                    .cornerRadius(8)
+                }
+                
+                Spacer()
+                
+                Button(action: {
+                    HapticManager.shared.light()
+                    viewModel.showRemoteControlSheet = true
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "gamecontroller.fill")
+                            .font(.system(size: 11))
+                        Text("Lái D-Pad")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.1))
+                    .cornerRadius(8)
+                }
+            }
             .padding(.horizontal, 16)
             
             // MARK: - 2. Thanh Chọn Phòng (khi mode == "area")
