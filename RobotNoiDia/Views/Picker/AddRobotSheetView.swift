@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Màn hình Thêm Robot Mới vào Ứng Dụng (Cloud Sync, Hướng dẫn Wi-Fi, Thêm thủ công)
+/// Màn hình Thêm Robot Mới vào Ứng Dụng (Cloud Sync, Quét LAN nội bộ, Hướng dẫn Wi-Fi, Thêm thủ công)
 public struct AddRobotSheetView: View {
     @ObservedObject var viewModel: RobotPickerViewModel
     @Environment(\.dismiss) private var dismiss
     
-    @State private var selectedTab: Int = 0 // 0: Cloud Sync, 1: Wi-Fi Guide, 2: Manual Add
+    @State private var selectedTab: Int = 0 // 0: Cloud Sync, 1: Quét LAN, 2: Ghép Nối Wi-Fi, 3: Thêm Thủ Công
     
     // Manual Add states
     @State private var selectedPreset: PresetRobotModel = PresetRobotModel.presets.first!
@@ -15,6 +15,12 @@ public struct AddRobotSheetView: View {
     // Status feedback
     @State private var syncStatusMessage: String? = nil
     @State private var isSyncSuccess: Bool = true
+    
+    // LAN Direct IP test states
+    @State private var manualIpText: String = ""
+    @State private var isTestingManualIp: Bool = false
+    @State private var testIpResultText: String? = nil
+    @State private var testIpIsSuccess: Bool = false
     
     public init(viewModel: RobotPickerViewModel) {
         self.viewModel = viewModel
@@ -29,27 +35,30 @@ public struct AddRobotSheetView: View {
                 VStack(spacing: 0) {
                     // 1. Segmented Control Switcher
                     Picker("Chế độ thêm", selection: $selectedTab) {
-                        Text("Đồng Bộ Cloud").tag(0)
-                        Text("Ghép Nối Wi-Fi").tag(1)
-                        Text("Thêm Thủ Công").tag(2)
+                        Text("Cloud").tag(0)
+                        Text("Quét LAN").tag(1)
+                        Text("Ghép Wi-Fi").tag(2)
+                        Text("Thủ Công").tag(3)
                     }
                     .pickerStyle(SegmentedPickerStyle())
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .padding(.bottom, 10)
                     
                     ScrollView {
                         VStack(spacing: 16) {
                             if selectedTab == 0 {
                                 cloudSyncTab
                             } else if selectedTab == 1 {
+                                localLanTab
+                            } else if selectedTab == 2 {
                                 wifiGuideTab
                             } else {
                                 manualAddTab
                             }
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
                     }
                 }
             }
@@ -68,7 +77,7 @@ public struct AddRobotSheetView: View {
                 }
             }
         }
-        .presentationDetents([.fraction(0.85), .large])
+        .presentationDetents([.fraction(0.88), .large])
     }
     
     // MARK: - Tab 1: Đồng Bộ Cloud
@@ -78,10 +87,10 @@ public struct AddRobotSheetView: View {
                 ZStack {
                     Circle()
                         .fill(Color.blue.opacity(0.1))
-                        .frame(width: 80, height: 80)
+                        .frame(width: 76, height: 76)
                     
                     Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
-                        .font(.system(size: 44))
+                        .font(.system(size: 42))
                         .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
                 }
                 .padding(.top, 10)
@@ -90,7 +99,7 @@ public struct AddRobotSheetView: View {
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
                 
-                Text("Nếu bạn vừa kết nối một robot Ecovacs mới trên ứng dụng gốc, chỉ cần bấm nút bên dưới để tự động phát hiện và nạp robot vào app mà không bị khóa vùng.")
+                Text("Tự động quét tài khoản Ecovacs của bạn để phát hiện robot mới đã được kết nối Wi-Fi, nạp cấu hình và điều khiển ngay lập tức mà không bị hạn chế vùng (Bypass geofencing).")
                     .font(.system(size: 13))
                     .foregroundColor(.gray)
                     .multilineTextAlignment(.center)
@@ -152,7 +161,276 @@ public struct AddRobotSheetView: View {
         }
     }
     
-    // MARK: - Tab 2: Hướng Dẫn Ghép Nối Wi-Fi
+    // MARK: - Tab 2: Quét Mạng Nội Bộ (Local LAN Discovery)
+    private var localLanTab: some View {
+        VStack(spacing: 16) {
+            // Header card
+            VStack(spacing: 12) {
+                HStack {
+                    ZStack {
+                        Circle()
+                            .fill(Color.green.opacity(0.12))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(Color(red: 0.0, green: 0.65, blue: 0.35))
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Quét Dải Mạng Wi-Fi Gia Đình")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
+                        
+                        if let wifiInfo = LocalNetworkScannerService.shared.getLocalWifiIPAddress() {
+                            Text("Dải mạng: \(wifiInfo.subnetPrefix).x (IP máy: \(wifiInfo.ip))")
+                                .font(.system(size: 12))
+                                .foregroundColor(.gray)
+                        } else {
+                            Text("Đang kết nối Wi-Fi...")
+                                .font(.system(size: 12))
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    
+                    Spacer()
+                }
+                
+                Text("Dò tìm trực tiếp các thiết bị Robot Ecovacs đang mở cổng dịch vụ nội bộ (80, 8080, 8883, 5222) trên mạng Wi-Fi của nhà bạn.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.gray)
+                    .lineSpacing(2)
+                
+                if viewModel.isScanningLAN {
+                    VStack(spacing: 6) {
+                        ProgressView(value: viewModel.scanProgress, total: 1.0)
+                            .progressViewStyle(LinearProgressViewStyle(tint: Color(red: 0.0, green: 0.65, blue: 0.35)))
+                        HStack {
+                            Text("Đang quét dải IP...")
+                                .font(.system(size: 11))
+                                .foregroundColor(.gray)
+                            Spacer()
+                            Text("\(Int(viewModel.scanProgress * 100))%")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(red: 0.0, green: 0.65, blue: 0.35))
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+                
+                Button(action: {
+                    viewModel.startLANScan()
+                }) {
+                    HStack(spacing: 8) {
+                        if viewModel.isScanningLAN {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.85)
+                            Text("Đang Quét Mạng...")
+                        } else {
+                            Image(systemName: "dot.radiowaves.left.and.right")
+                            Text("Bắt Đầu Quét Mạng LAN")
+                        }
+                    }
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(Color(red: 0.0, green: 0.65, blue: 0.35))
+                    .cornerRadius(12)
+                    .shadow(color: Color.green.opacity(0.25), radius: 5, y: 2)
+                }
+                .disabled(viewModel.isScanningLAN)
+            }
+            .padding(16)
+            .background(Color.white)
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.04), radius: 6, y: 2)
+            
+            // Danh sách thiết bị phát hiện
+            if !viewModel.discoveredDevices.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("THIẾT BỊ PHÁT HIỆN TRÊN LAN (\(viewModel.discoveredDevices.count))")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.gray)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 4)
+                    
+                    ForEach(viewModel.discoveredDevices) { dev in
+                        discoveredDeviceRow(dev: dev)
+                    }
+                }
+            } else if !viewModel.isScanningLAN && viewModel.scanProgress >= 1.0 {
+                VStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 28))
+                        .foregroundColor(.gray.opacity(0.5))
+                    Text("Chưa tìm thấy robot nào có cổng mở trong dải IP này.\nBạn có thể thử nhập IP thủ công bên dưới.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.gray)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(20)
+                .background(Color.white)
+                .cornerRadius(14)
+            }
+            
+            // Nhập IP thủ công & Test trực tiếp
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Kiểm Tra Nhanh Địa Chỉ IP Trực Tiếp")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
+                
+                HStack {
+                    Image(systemName: "network")
+                        .foregroundColor(.gray)
+                    TextField("Nhập IP Robot (VD: 192.168.1.45)", text: $manualIpText)
+                        .font(.system(size: 13))
+                        .keyboardType(.numbersAndPunctuation)
+                        .autocapitalization(.none)
+                    
+                    Button(action: {
+                        testManualIp()
+                    }) {
+                        if isTestingManualIp {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        } else {
+                            Text("Kiểm tra")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                        }
+                    }
+                    .disabled(manualIpText.trimmingCharacters(in: .whitespaces).isEmpty || isTestingManualIp)
+                }
+                .padding(12)
+                .background(Color(white: 0.95))
+                .cornerRadius(10)
+                
+                if let res = testIpResultText {
+                    HStack(spacing: 8) {
+                        Image(systemName: testIpIsSuccess ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                            .foregroundColor(testIpIsSuccess ? .green : .orange)
+                        Text(res)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(testIpIsSuccess ? Color(red: 0.1, green: 0.5, blue: 0.2) : .orange)
+                        Spacer()
+                        
+                        if testIpIsSuccess {
+                            Button("Thêm Ngay") {
+                                addManualIpRobot()
+                            }
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.blue)
+                            .cornerRadius(8)
+                        }
+                    }
+                    .padding(10)
+                    .background(testIpIsSuccess ? Color.green.opacity(0.1) : Color.orange.opacity(0.1))
+                    .cornerRadius(10)
+                }
+            }
+            .padding(16)
+            .background(Color.white)
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.04), radius: 6, y: 2)
+        }
+    }
+    
+    private func discoveredDeviceRow(dev: DiscoveredLocalDevice) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(dev.isEcovacsLikely ? Color.blue.opacity(0.12) : Color.gray.opacity(0.12))
+                    .frame(width: 40, height: 40)
+                Image(systemName: dev.isEcovacsLikely ? "sparkles" : "network")
+                    .font(.system(size: 18))
+                    .foregroundColor(dev.isEcovacsLikely ? Color.blue : Color.gray)
+            }
+            
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(dev.modelHint)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
+                    
+                    if dev.isEcovacsLikely {
+                        Text("Ecovacs")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.blue)
+                            .cornerRadius(4)
+                    }
+                }
+                
+                HStack(spacing: 6) {
+                    Text("IP: \(dev.ip):\(dev.port)")
+                    Text("•")
+                    Text("\(dev.latencyMs)ms")
+                        .foregroundColor(Color.green)
+                }
+                .font(.system(size: 11))
+                .foregroundColor(.gray)
+            }
+            
+            Spacer()
+            
+            Button(action: {
+                HapticManager.shared.success()
+                let preset = PresetRobotModel.presets.first(where: { dev.modelHint.contains($0.name) }) ?? PresetRobotModel.presets.first!
+                viewModel.addDiscoveredRobot(discovered: dev, name: dev.modelHint, preset: preset)
+                dismiss()
+            }) {
+                Text("Thêm")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color(red: 0.09, green: 0.47, blue: 1.0))
+                    .cornerRadius(8)
+            }
+        }
+        .padding(12)
+        .background(Color.white)
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.03), radius: 3, y: 1)
+    }
+    
+    private func testManualIp() {
+        let ip = manualIpText.trimmingCharacters(in: .whitespacesAndNewlines)
+        isTestingManualIp = true
+        testIpResultText = nil
+        HapticManager.shared.light()
+        
+        Task {
+            let res = await LocalNetworkScannerService.shared.testSpecificIP(ip: ip)
+            isTestingManualIp = false
+            testIpIsSuccess = res.isOnline
+            if res.isOnline {
+                testIpResultText = "Trực tuyến (\(res.latencyMs)ms) - \(res.hint)"
+                HapticManager.shared.success()
+            } else {
+                testIpResultText = "Không có phản hồi từ \(ip). Kiểm tra lại Wi-Fi/IP."
+                HapticManager.shared.error()
+            }
+        }
+    }
+    
+    private func addManualIpRobot() {
+        let ip = manualIpText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dev = DiscoveredLocalDevice(ip: ip, port: 80, latencyMs: 5, modelHint: "DEEBOT Robot (LAN)", isEcovacsLikely: true)
+        viewModel.addDiscoveredRobot(discovered: dev, name: "DEEBOT (LAN \(ip))", preset: PresetRobotModel.presets.first!)
+        dismiss()
+    }
+    
+    // MARK: - Tab 3: Hướng Dẫn Ghép Nối Wi-Fi
     private var wifiGuideTab: some View {
         VStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 14) {
@@ -191,7 +469,7 @@ public struct AddRobotSheetView: View {
                     step: 4,
                     icon: "checkmark.seal.fill",
                     title: "Đồng bộ vào App",
-                    desc: "Sau khi robot đã kết nối Wi-Fi qua tài khoản, quay lại bấm nút 'Đồng bộ Cloud' để hoàn tất."
+                    desc: "Sau khi robot đã kết nối Wi-Fi qua tài khoản, quay lại bấm nút 'Đồng bộ Cloud' hoặc 'Quét LAN' để hoàn tất."
                 )
             }
             .padding(18)
@@ -252,7 +530,7 @@ public struct AddRobotSheetView: View {
         }
     }
     
-    // MARK: - Tab 3: Thêm Thủ Công
+    // MARK: - Tab 4: Thêm Thủ Công
     private var manualAddTab: some View {
         VStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 14) {

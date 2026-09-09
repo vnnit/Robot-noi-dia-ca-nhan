@@ -17,11 +17,18 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.1.33</string>
+    <string>1.1.34</string>
     <key>CFBundleVersion</key>
-    <string>36</string>
+    <string>37</string>
     <key>UIUserInterfaceStyle</key>
     <string>Light</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Ứng dụng cần quyền quét mạng nội bộ để phát hiện và kết nối trực tiếp với robot Ecovacs trong mạng Wi-Fi gia đình.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_ecovacs._tcp</string>
+        <string>_http._tcp</string>
+    </array>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>MinimumOSVersion</key>

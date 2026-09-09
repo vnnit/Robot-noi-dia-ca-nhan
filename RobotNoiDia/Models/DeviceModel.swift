@@ -20,6 +20,9 @@ public struct DeviceModel: Identifiable, Codable, Hashable {
     public var isCharging: Bool?
     public var cleanState: String?
     public var cleanStateText: String?
+    public var localIp: String?
+    public var localLatencyMs: Int?
+
     
     public var customNick: String? {
         UserDefaults.standard.string(forKey: "custom_robot_name_\(did)")
@@ -215,7 +218,9 @@ public struct DeviceModel: Identifiable, Codable, Hashable {
         battery: Int? = nil,
         isCharging: Bool? = nil,
         cleanState: String? = nil,
-        cleanStateText: String? = nil
+        cleanStateText: String? = nil,
+        localIp: String? = nil,
+        localLatencyMs: Int? = nil
     ) {
         self.did = did
         self.name = name
@@ -231,6 +236,8 @@ public struct DeviceModel: Identifiable, Codable, Hashable {
         self.isCharging = isCharging
         self.cleanState = cleanState
         self.cleanStateText = cleanStateText
+        self.localIp = localIp
+        self.localLatencyMs = localLatencyMs
     }
 }
 

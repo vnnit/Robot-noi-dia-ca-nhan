@@ -9,6 +9,10 @@ public final class RobotPickerViewModel: ObservableObject {
     @Published public var errorMessage: String? = nil
     @Published public var showAddRobotSheet: Bool = false
     @Published public var isSyncingCloud: Bool = false
+    @Published public var isScanningLAN: Bool = false
+    @Published public var scanProgress: Float = 0.0
+    @Published public var discoveredDevices: [DiscoveredLocalDevice] = []
+
 
     
     private let deviceService = EcovacsDeviceService.shared
@@ -174,7 +178,59 @@ public final class RobotPickerViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Quét Mạng Nội Bộ (Local LAN Discovery)
+    public func startLANScan() {
+        guard !isScanningLAN else { return }
+        isScanningLAN = true
+        scanProgress = 0.0
+        discoveredDevices.removeAll()
+        HapticManager.shared.light()
+        
+        Task {
+            let results = await LocalNetworkScannerService.shared.scanSubnet { [weak self] progress in
+                Task { @MainActor [weak self] in
+                    self?.scanProgress = progress
+                }
+            }
+            self.discoveredDevices = results
+            self.isScanningLAN = false
+            self.scanProgress = 1.0
+            HapticManager.shared.success()
+        }
+    }
+    
+    public func addDiscoveredRobot(discovered: DiscoveredLocalDevice, name: String, preset: PresetRobotModel) {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalName = cleanName.isEmpty ? (discovered.hostname ?? preset.name) : cleanName
+        let syntheticDid = "lan_\(discovered.ip.replacingOccurrences(of: ".", with: "_"))"
+        
+        let newDevice = DeviceModel(
+            did: syntheticDid,
+            name: finalName,
+            nick: finalName,
+            model: preset.modelCode,
+            deviceClass: preset.deviceClass,
+            company: preset.company,
+            status: 1,
+            icon: preset.defaultIcon,
+            fwVer: "LAN Direct",
+            resource: preset.resource,
+            battery: 100,
+            isCharging: true,
+            cleanState: "charging",
+            cleanStateText: "Trực tuyến (LAN)",
+            localIp: discovered.ip,
+            localLatencyMs: discovered.latencyMs
+        )
+        
+        deviceService.addCustomDevice(newDevice)
+        self.devices = deviceService.getCachedDevices()
+        RobotImageCacheManager.shared.preloadImages(for: self.devices)
+        HapticManager.shared.success()
+    }
+    
     deinit {
+
 
         refreshTimer?.invalidate()
     }

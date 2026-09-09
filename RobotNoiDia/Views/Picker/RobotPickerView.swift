@@ -200,7 +200,14 @@ public struct RobotPickerView: View {
                                         .font(.system(size: 12))
                                         .foregroundColor(.gray)
                                 }
+                                
+                                if let ip = currentRobot?.localIp {
+                                    Text("• LAN: \(ip)")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(Color(red: 0.0, green: 0.65, blue: 0.35))
+                                }
                             }
+
                         }
                         
                         Spacer()
