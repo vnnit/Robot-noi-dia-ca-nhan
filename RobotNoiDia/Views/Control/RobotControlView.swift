@@ -22,7 +22,6 @@ public struct RobotControlView: View {
             let screenHeight = geometry.size.height
             let screenWidth = geometry.size.width
             
-            // Chiều cao Bottom Sheet: thu gọn 240pt, mở rộng sát đỉnh (còn 90pt cho Top Bar)
             let collapsedHeight: CGFloat = 240
             let expandedHeight: CGFloat = screenHeight - 90
             let collapsedOffsetY = screenHeight - collapsedHeight
@@ -31,675 +30,27 @@ public struct RobotControlView: View {
             let baseOffsetY = isSheetExpanded ? expandedOffsetY : collapsedOffsetY
             let currentSheetOffsetY = max(expandedOffsetY, min(collapsedOffsetY, baseOffsetY + dragOffset))
             
-            // Cử chỉ kéo vuốt Bottom Sheet dùng chung
-            let sheetDragGesture = DragGesture(minimumDistance: 5)
-                .onChanged { value in
-                    dragOffset = value.translation.height
-                }
-                .onEnded { value in
-                    let velocity = value.predictedEndTranslation.height
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                        if isSheetExpanded {
-                            // Đang mở: kéo xuống > 35pt hoặc vuốt mạnh xuống thì thu gọn
-                            if value.translation.height > 35 || velocity > 120 {
-                                isSheetExpanded = false
-                            }
-                        } else {
-                            // Đang thu gọn: kéo lên < -35pt hoặc vuốt mạnh lên thì mở rộng
-                            if value.translation.height < -35 || velocity < -120 {
-                                isSheetExpanded = true
-                            }
-                        }
-                        dragOffset = 0
-                    }
-                }
-            
             ZStack(alignment: .top) {
-                // 1. NỀN BẢN ĐỒ
                 Color(red: 0.94, green: 0.96, blue: 0.98)
                     .ignoresSafeArea()
                 
-                // Bản đồ chính
-                VStack(spacing: 0) {
-                    Spacer().frame(height: 90)
-                    
-                    ZStack {
-                        if viewModel.isMapLoading {
-                            VStack(spacing: 12) {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: Color(red: 0.09, green: 0.47, blue: 1.0)))
-                                    .scaleEffect(1.2)
-                                Text("Đang tải bản đồ LiDAR...")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.gray)
-                            }
-                        } else if let svg = viewModel.svgMap, !svg.isEmpty {
-                            SVGWebView(svgString: svg)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .cornerRadius(18)
-                                .padding(.horizontal, 8)
-                                .shadow(color: Color.black.opacity(0.18), radius: 8, y: 3)
-                        } else {
-                            // Radar quét LiDAR chân thực khi chưa có hoặc đang đồng bộ bản đồ
-                            LiDARRadarScanningView(device: viewModel.device, state: viewModel.state) {
-                                Task { await viewModel.refreshMap() }
-                            }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                    }
-                    .frame(height: screenHeight - 230)
-                    
-                    Spacer()
-                }
+                mapContentView(screenHeight: screenHeight)
                 
-                // 2. CÁC NÚT NỔI TRÊN BẢN ĐỒ
-                // Phía trên bên trái: Tên bản đồ & ID thực tế
-                VStack(alignment: .leading, spacing: 8) {
-                    Spacer().frame(height: 105)
-                    
-                    HStack(spacing: 5) {
-                        Image(systemName: "dot.radiowaves.left.and.right")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.cyan)
-                        Text(viewModel.device.friendlyModelName)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color.white)
-                        if let mid = viewModel.mapId, !mid.isEmpty {
-                            Text("• \(mid)")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(Color.cyan)
-                        }
-                        if let cov = viewModel.mapCoverageM2, cov > 0 {
-                            Text("• \(cov) m²")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(Color(red: 0.0, green: 0.85, blue: 0.45))
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.black.opacity(0.65))
-                    .cornerRadius(8)
-                    .shadow(color: Color.black.opacity(0.15), radius: 4, y: 2)
-                    
-                    Spacer()
-                }
-                .padding(.leading, 16)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                mapHeaderInfo
                 
-                // Phía trên bên phải: Các nút bản đồ
-                VStack(spacing: 12) {
-                    Spacer().frame(height: 105)
-                    
-                    // Nút làm mới bản đồ
-                    Button(action: {
-                        Task { await viewModel.refreshMap() }
-                        viewModel.toastMessage = "Đang quét lại bản đồ..."
-                        viewModel.showToast = true
-                    }) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Color(white: 0.25))
-                            .frame(width: 42, height: 42)
-                            .background(Color.white.opacity(0.95))
-                            .clipShape(Circle())
-                            .shadow(color: Color.black.opacity(0.08), radius: 5, y: 2)
-                    }
-                    
-                    // Nút định vị robot
-                    Button(action: {
-                        viewModel.triggerRelocate()
-                    }) {
-                        Image(systemName: "location.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-                            .frame(width: 42, height: 42)
-                            .background(Color.white.opacity(0.95))
-                            .clipShape(Circle())
-                            .shadow(color: Color.black.opacity(0.08), radius: 5, y: 2)
-                    }
-                    
-                    // Nút Tường ảo & Vùng cấm
-                    Button(action: {
-                        showBoundaryDialog = true
-                    }) {
-                        Image(systemName: "hand.raised.slash.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(Color(red: 0.95, green: 0.25, blue: 0.25))
-                            .frame(width: 42, height: 42)
-                            .background(Color.white.opacity(0.95))
-                            .clipShape(Circle())
-                            .shadow(color: Color.black.opacity(0.08), radius: 5, y: 2)
-                    }
-                    
-                    Spacer()
-                }
-                .padding(.trailing, 16)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                mapOverlayButtons
                 
-                // 3. TOP NAVIGATION BAR
-                HStack(alignment: .center) {
-                    // Nút Back <
-                    Button(action: {
-                        appState.navigateToPicker()
-                    }) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 19, weight: .bold))
-                            .foregroundColor(Color(white: 0.15))
-                            .padding(8)
-                    }
-                    
-                    Spacer()
-                    
-                    // Tên Robot & Pin
-                    VStack(spacing: 3) {
-                        HStack(spacing: 6) {
-                            RobotIconThumbnailView(device: viewModel.device, size: 24)
-                            
-                            Text(viewModel.device.displayName)
-                                .font(.system(size: 17, weight: .bold))
-                                .foregroundColor(Color(white: 0.15))
-                            
-                            Button(action: {
-                                newNameText = viewModel.device.displayName
-                                showRenameAlert = true
-                            }) {
-                                Image(systemName: "pencil")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.gray)
-                            }
-                        }
-                        
-                        HStack(spacing: 4) {
-                            Image(systemName: viewModel.state.isCharging ? "bolt.fill" : "battery.100")
-                                .font(.system(size: 10))
-                                .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.45))
-                            Text("\(viewModel.state.batteryPercent)%")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(Color(white: 0.35))
-                            Text("|")
-                                .font(.system(size: 10))
-                                .foregroundColor(Color.gray.opacity(0.5))
-                            Text(viewModel.state.cleanStateText)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(Color(white: 0.35))
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.white.opacity(0.85))
-                        .cornerRadius(6)
-                    }
-                    
-                    Spacer()
-                    
-                    // Nút Cài đặt (Gear icon)
-                    Button(action: {
-                        viewModel.showMoreSettings = true
-                    }) {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundColor(Color(white: 0.15))
-                            .padding(8)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.top, 6)
+                topNavigationBar
                 
-                // 4. THANH MENU NỔI DƯỚI MỤC PIN (FLOATING ACTION CAPSULE BAR)
-                VStack {
-                    Spacer().frame(height: 52)
-                    
-                    HStack(spacing: 8) {
-                        // Trạng thái robot
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(viewModel.state.isWorking ? Color.blue : Color(red: 0.0, green: 0.75, blue: 0.45))
-                                .frame(width: 7, height: 7)
-                            
-                            Text(viewModel.state.isWorking ? "Robot đang dọn dẹp" : (viewModel.state.isCharging ? "Đang sạc tại trạm" : "Robot đang chờ lệnh"))
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(Color(white: 0.2))
-                                .lineLimit(1)
-                        }
-                        
-                        Spacer()
-                        
-                        // Nút Nhật ký vệ sinh
-                        Button(action: {
-                            Task { await viewModel.fetchCleaningLogs() }
-                            viewModel.showCleaningLogSheet = true
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "clock.arrow.circlepath")
-                                    .font(.system(size: 11, weight: .bold))
-                                Text("Nhật ký")
-                                    .font(.system(size: 11, weight: .bold))
-                            }
-                            .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 5)
-                            .background(Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.1))
-                            .cornerRadius(8)
-                        }
-                        
-                        // Nút Quét lại map
-                        Button(action: {
-                            Task { await viewModel.refreshMap() }
-                            viewModel.toastMessage = "Đang quét lại bản đồ..."
-                            viewModel.showToast = true
-                        }) {
-                            HStack(spacing: 3) {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 10, weight: .bold))
-                                Text("Quét")
-                                    .font(.system(size: 11, weight: .semibold))
-                            }
-                            .foregroundColor(Color(white: 0.3))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(Color(white: 0.94))
-                            .cornerRadius(8)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(Color.white.opacity(0.95))
-                    .cornerRadius(14)
-                    .shadow(color: Color.black.opacity(0.08), radius: 6, y: 2)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(Color.black.opacity(0.06), lineWidth: 1)
-                    )
-                    .padding(.horizontal, 14)
-                    
-                    Spacer()
-                }
+                floatingStatusCapsule
                 
-                // 5. DRAGGABLE BOTTOM SHEET (Chỉ giữ TỰ ĐỘNG, vuốt lên để xem cài đặt)
-                VStack(spacing: 0) {
-                    // Thanh gạt (Drag indicator) & Chỉ dẫn vuốt/chạm
-                    VStack(spacing: 4) {
-                        Capsule()
-                            .fill(Color.gray.opacity(0.35))
-                            .frame(width: 40, height: 5)
-                            .padding(.top, 8)
-                        
-                        HStack(spacing: 4) {
-                            Image(systemName: isSheetExpanded ? "chevron.down" : "chevron.up")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-                            Text(isSheetExpanded ? "Thu gọn" : "Vuốt lên xem cài đặt")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(Color(white: 0.45))
-                        }
-                        .padding(.bottom, 4)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                            isSheetExpanded.toggle()
-                        }
-                    }
-                    .highPriorityGesture(sheetDragGesture)
-                    
-                    // Nội dung Bottom Sheet
-                    ScrollView(showsIndicators: false) {
-                        VStack(spacing: 16) {
-                            // Badge Chế độ TỰ ĐỘNG duy nhất
-                            HStack {
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-                                Text("CHẾ ĐỘ DỌN DẸP TỰ ĐỘNG")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 6)
-                            .background(Color(red: 0.92, green: 0.96, blue: 1.0))
-                            .cornerRadius(20)
-                            .padding(.top, 2)
-                            
-                            // 3 Nút tác vụ chính: [Quét lại bản đồ] [▶ TỰ ĐỘNG DỌN DẸP] [Trạm sạc]
-                            HStack(spacing: 0) {
-                                // Nút 1: Quét lại bản đồ
-                                Button(action: {
-                                    Task { await viewModel.refreshMap() }
-                                }) {
-                                    VStack(spacing: 6) {
-                                        ZStack {
-                                            Circle()
-                                                .fill(Color(white: 0.95))
-                                                .frame(width: 50, height: 50)
-                                            Image(systemName: "map")
-                                                .font(.system(size: 20))
-                                                .foregroundColor(Color(white: 0.25))
-                                        }
-                                        Text("Bản đồ")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(Color(white: 0.35))
-                                    }
-                                }
-                                .frame(maxWidth: .infinity)
-                                
-                                // Nút 2: TỰ ĐỘNG DỌN DẸP / TẠM DỪNG (Play / Pause)
-                                Button(action: {
-                                    let isCleaning = viewModel.state.cleanState == "clean"
-                                    viewModel.triggerClean(action: isCleaning ? .pause : .start)
-                                }) {
-                                    VStack(spacing: 6) {
-                                        ZStack {
-                                            Circle()
-                                                .fill(
-                                                    LinearGradient(
-                                                        colors: [Color(red: 0.09, green: 0.52, blue: 1.0), Color(red: 0.05, green: 0.38, blue: 0.95)],
-                                                        startPoint: .topLeading,
-                                                        endPoint: .bottomTrailing
-                                                    )
-                                                )
-                                                .frame(width: 66, height: 66)
-                                                .shadow(color: Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.35), radius: 10, y: 5)
-                                            
-                                            Image(systemName: viewModel.state.cleanState == "clean" ? "pause.fill" : "play.fill")
-                                                .font(.system(size: 26))
-                                                .foregroundColor(.white)
-                                        }
-                                        
-                                        Text(viewModel.state.cleanState == "clean" ? "TẠM DỪNG" : "BẮT ĐẦU")
-                                            .font(.system(size: 11, weight: .bold))
-                                            .foregroundColor(Color(white: 0.2))
-                                    }
-                                }
-                                .frame(maxWidth: .infinity)
-                                
-                                // Nút 3: Trạm sạc (Quay về sạc)
-                                Button(action: {
-                                    viewModel.triggerCharge()
-                                }) {
-                                    VStack(spacing: 6) {
-                                        ZStack {
-                                            Circle()
-                                                .fill(Color(white: 0.95))
-                                                .frame(width: 50, height: 50)
-                                            Image(systemName: "bolt.fill")
-                                                .font(.system(size: 20))
-                                                .foregroundColor(Color(white: 0.25))
-                                        }
-                                        Text("Trạm sạc")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(Color(white: 0.35))
-                                    }
-                                }
-                                .frame(maxWidth: .infinity)
-                            }
-                            .padding(.top, 2)
-                            
-                            // Gợi ý vuốt lên
-                            Divider()
-                                .background(Color.gray.opacity(0.15))
-                                .padding(.horizontal, 16)
-                            
-                            // CÁC TÍNH NĂNG ĐIỀU KHIỂN THẬT (Khi vuốt lên)
-                            VStack(alignment: .leading, spacing: 18) {
-                                // 0. TRẠM SẠC THÔNG MINH OMNI / TURBO
-                                if viewModel.device.hasOmniStation {
-                                    VStack(alignment: .leading, spacing: 10) {
-                                        HStack {
-                                            Image(systemName: "powerplug.fill")
-                                                .font(.system(size: 14))
-                                                .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-                                            Text("Trạm sạc thông minh OMNI")
-                                                .font(.system(size: 14, weight: .bold))
-                                                .foregroundColor(Color(white: 0.15))
-                                            Spacer()
-                                            if viewModel.state.isWashingMop {
-                                                Text("Đang giặt giẻ...")
-                                                    .font(.system(size: 11, weight: .semibold))
-                                                    .foregroundColor(.blue)
-                                            } else if viewModel.state.isAirDrying {
-                                                Text("Đang sấy khí nóng...")
-                                                    .font(.system(size: 11, weight: .semibold))
-                                                    .foregroundColor(.orange)
-                                            } else if viewModel.state.dustbinEmptying {
-                                                Text("Đang gom rác...")
-                                                    .font(.system(size: 11, weight: .semibold))
-                                                    .foregroundColor(.purple)
-                                            }
-                                        }
-                                        
-                                        HStack(spacing: 8) {
-                                            // Nút Giặt giẻ
-                                            Button(action: {
-                                                viewModel.triggerStationAction(viewModel.state.isWashingMop ? .stopMopWash : .startMopWash)
-                                            }) {
-                                                HStack(spacing: 5) {
-                                                    Image(systemName: viewModel.state.isWashingMop ? "stop.fill" : "drop.fill")
-                                                        .font(.system(size: 11))
-                                                    Text(viewModel.state.isWashingMop ? "Dừng giặt" : "Giặt giẻ")
-                                                        .font(.system(size: 12, weight: .semibold))
-                                                }
-                                                .foregroundColor(viewModel.state.isWashingMop ? .white : Color(red: 0.09, green: 0.47, blue: 1.0))
-                                                .frame(maxWidth: .infinity)
-                                                .frame(height: 36)
-                                                .background(viewModel.state.isWashingMop ? Color.blue : Color(red: 0.92, green: 0.96, blue: 1.0))
-                                                .cornerRadius(8)
-                                            }
-                                            
-                                            // Nút Sấy khô khí nóng
-                                            Button(action: {
-                                                viewModel.triggerStationAction(viewModel.state.isAirDrying ? .stopAirDrying : .startAirDrying)
-                                            }) {
-                                                HStack(spacing: 5) {
-                                                    Image(systemName: viewModel.state.isAirDrying ? "stop.fill" : "flame.fill")
-                                                        .font(.system(size: 11))
-                                                    Text(viewModel.state.isAirDrying ? "Dừng sấy" : "Sấy khô")
-                                                        .font(.system(size: 12, weight: .semibold))
-                                                }
-                                                .foregroundColor(viewModel.state.isAirDrying ? .white : Color.orange)
-                                                .frame(maxWidth: .infinity)
-                                                .frame(height: 36)
-                                                .background(viewModel.state.isAirDrying ? Color.orange : Color.orange.opacity(0.12))
-                                                .cornerRadius(8)
-                                            }
-                                            
-                                            // Nút Tự động Gom rác
-                                            Button(action: {
-                                                viewModel.triggerStationAction(.emptyDustbin)
-                                            }) {
-                                                HStack(spacing: 5) {
-                                                    Image(systemName: "trash.fill")
-                                                        .font(.system(size: 11))
-                                                    Text(viewModel.state.dustbinEmptying ? "Gom rác..." : "Gom rác")
-                                                        .font(.system(size: 12, weight: .semibold))
-                                                }
-                                                .foregroundColor(Color.purple)
-                                                .frame(maxWidth: .infinity)
-                                                .frame(height: 36)
-                                                .background(Color.purple.opacity(0.12))
-                                                .cornerRadius(8)
-                                            }
-                                        }
-                                    }
-                                    .padding(12)
-                                    .background(Color(red: 0.97, green: 0.98, blue: 1.0))
-                                    .cornerRadius(12)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(Color.blue.opacity(0.15), lineWidth: 1)
-                                    )
-                                    
-                                    Divider().padding(.vertical, 2)
-                                }
-                                
-                                // 1. Số lần dọn: [1 lần | 2 lần]
-                                HStack {
-                                    Text("Số lần dọn dẹp")
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundColor(Color(white: 0.15))
-                                    Spacer()
-                                    HStack(spacing: 8) {
-                                        ForEach([1, 2], id: \.self) { t in
-                                            choicePill(title: "\(t) lần", isSelected: viewModel.cleanTimes == t) {
-                                                viewModel.setCleanTimes(t)
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                // 2. Lực hút bụi: 4 mức
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Lực hút bụi")
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundColor(Color(white: 0.15))
-                                    
-                                    HStack(spacing: 6) {
-                                        choicePill(title: "Yên tĩnh", isSelected: viewModel.state.fanSpeed == "quiet") {
-                                            viewModel.setFanSpeed(.quiet)
-                                        }
-                                        choicePill(title: "Tiêu chuẩn", isSelected: viewModel.state.fanSpeed == "standard") {
-                                            viewModel.setFanSpeed(.standard)
-                                        }
-                                        choicePill(title: "Mạnh", isSelected: viewModel.state.fanSpeed == "max") {
-                                            viewModel.setFanSpeed(.max)
-                                        }
-                                        choicePill(title: "Siêu mạnh", isSelected: viewModel.state.fanSpeed == "max+") {
-                                            viewModel.setFanSpeed(.maxPlus)
-                                        }
-                                    }
-                                }
-                                
-                                // 3. Lượng nước lau sàn: 4 mức
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Lượng nước lau sàn")
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundColor(Color(white: 0.15))
-                                    
-                                    HStack(spacing: 8) {
-                                        ForEach(1...4, id: \.self) { level in
-                                            choicePill(title: "Mức \(level)", isSelected: viewModel.state.waterAmount == level) {
-                                                viewModel.setWaterAmount(level)
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                // 4. Tự tăng áp khi leo lên thảm
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Tự động tăng áp thảm")
-                                            .font(.system(size: 14, weight: .semibold))
-                                            .foregroundColor(Color(white: 0.15))
-                                        Text("Tăng lực hút tối đa khi cảm biến phát hiện thảm")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.gray)
-                                    }
-                                    Spacer()
-                                    Toggle("", isOn: Binding(
-                                        get: { viewModel.state.carpetAutoBoost },
-                                        set: { _ in viewModel.toggleCarpetBoost() }
-                                    ))
-                                    .labelsHidden()
-                                }
-                                
-                                // 5. Khóa an toàn trẻ em
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Khóa an toàn trẻ em")
-                                            .font(.system(size: 14, weight: .semibold))
-                                            .foregroundColor(Color(white: 0.15))
-                                        Text("Khóa các nút bấm vật lý trên thân robot")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.gray)
-                                    }
-                                    Spacer()
-                                    Toggle("", isOn: Binding(
-                                        get: { viewModel.state.childLock },
-                                        set: { _ in viewModel.toggleChildLock() }
-                                    ))
-                                    .labelsHidden()
-                                }
-                                
-                                // 6. Âm lượng giọng nói robot
-                                VStack(alignment: .leading, spacing: 6) {
-                                    HStack {
-                                        Text("Âm lượng giọng nói")
-                                            .font(.system(size: 14, weight: .semibold))
-                                            .foregroundColor(Color(white: 0.15))
-                                        Spacer()
-                                        Text("\(viewModel.state.volume)")
-                                            .font(.system(size: 13, weight: .bold))
-                                            .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-                                    }
-                                    
-                                    Slider(
-                                        value: Binding(
-                                            get: { Double(viewModel.state.volume) },
-                                            set: { viewModel.setVolume(Int($0)) }
-                                        ),
-                                        in: 0...10,
-                                        step: 1
-                                    )
-                                    .accentColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-                                }
-                                
-                                // 7. Nút Tìm DEEBOT của tôi
-                                Button(action: {
-                                    viewModel.triggerPlaySound()
-                                }) {
-                                    HStack {
-                                        Image(systemName: "speaker.wave.3.fill")
-                                            .font(.system(size: 14))
-                                        Text("Tìm DEEBOT của tôi (Phát chuông)")
-                                            .font(.system(size: 14, weight: .semibold))
-                                    }
-                                    .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 44)
-                                    .background(Color(red: 0.92, green: 0.96, blue: 1.0))
-                                    .cornerRadius(10)
-                                }
-                                
-                                // 8. Nút Cài đặt nâng cao > (Mở Hình 5)
-                                Button(action: {
-                                    viewModel.showMoreSettings = true
-                                }) {
-                                    HStack {
-                                        Text("Cài đặt nâng cao")
-                                            .font(.system(size: 15, weight: .bold))
-                                        Image(systemName: "chevron.right")
-                                            .font(.system(size: 13, weight: .bold))
-                                    }
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 48)
-                                    .background(Color(red: 0.09, green: 0.47, blue: 1.0))
-                                    .cornerRadius(12)
-                                }
-                                .padding(.top, 4)
-                            }
-                            .padding(.horizontal, 20)
-                            Spacer().frame(height: 100)
-                        }
-                    }
-                    .scrollDisabled(!isSheetExpanded)
-                }
-                .frame(width: screenWidth, height: expandedHeight)
-                .background(Color.white)
-                .cornerRadius(24, corners: [.topLeft, .topRight])
-                .shadow(color: Color.black.opacity(0.12), radius: 12, y: -4)
-                .offset(y: currentSheetOffsetY)
-                .simultaneousGesture(sheetDragGesture)
+                bottomSheetContainer(
+                    screenWidth: screenWidth,
+                    expandedHeight: expandedHeight,
+                    offsetY: currentSheetOffsetY
+                )
                 
-                // Toast thông báo nổi
-                if viewModel.showToast, let msg = viewModel.toastMessage {
-                    VStack {
-                        CustomToastView(message: msg)
-                            .padding(.top, 50)
-                        Spacer()
-                    }
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .animation(.easeInOut(duration: 0.25), value: viewModel.showToast)
-                }
+                toastOverlayView
             }
         }
         .onAppear {
@@ -724,31 +75,699 @@ public struct RobotControlView: View {
             Text("Đặt tên gợi nhớ cho robot của bạn.")
         }
         .confirmationDialog("Tường Ảo & Vùng Cấm", isPresented: $showBoundaryDialog, titleVisibility: .visible) {
-            Button("Thêm Tường Ảo (Virtual Wall)") {
-                let rx = viewModel.state.robotX
-                let ry = viewModel.state.robotY
-                viewModel.addVirtualWall(x1: rx - 500, y1: ry - 300, x2: rx + 500, y2: ry - 300)
+            boundaryDialogContent
+        }
+    }
+    
+    // MARK: - Gestures
+    private var sheetDragGesture: some Gesture {
+        DragGesture(minimumDistance: 5)
+            .onChanged { value in
+                dragOffset = value.translation.height
             }
-            Button("Thêm Vùng Cấm Hút & Lau (No-Go)") {
-                let rx = viewModel.state.robotX
-                let ry = viewModel.state.robotY
-                viewModel.addRestrictedZone(x: rx - 400, y: ry + 200, width: 600, height: 600, type: .noGo)
-            }
-            Button("Thêm Vùng Cấm Lau Nhà (No-Mop)") {
-                let rx = viewModel.state.robotX
-                let ry = viewModel.state.robotY
-                viewModel.addRestrictedZone(x: rx + 300, y: ry, width: 500, height: 500, type: .noMop)
-            }
-            if !viewModel.state.virtualWalls.isEmpty || !viewModel.state.restrictedZones.isEmpty {
-                Button("Xóa Tất Cả Tường Ảo & Vùng Cấm", role: .destructive) {
-                    viewModel.state.virtualWalls.removeAll()
-                    viewModel.state.restrictedZones.removeAll()
-                    Task { await viewModel.updateMapSvg() }
-                    viewModel.showToastNotification("Đã xóa tất cả tường ảo và vùng cấm")
+            .onEnded { value in
+                let velocity = value.predictedEndTranslation.height
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                    if isSheetExpanded {
+                        if value.translation.height > 35 || velocity > 120 {
+                            isSheetExpanded = false
+                        }
+                    } else {
+                        if value.translation.height < -35 || velocity < -120 {
+                            isSheetExpanded = true
+                        }
+                    }
+                    dragOffset = 0
                 }
             }
-            Button("Đóng", role: .cancel) {}
+    }
+    
+    // MARK: - Subviews
+    @ViewBuilder
+    private func mapContentView(screenHeight: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            Spacer().frame(height: 90)
+            
+            ZStack {
+                if viewModel.isMapLoading {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: Color(red: 0.09, green: 0.47, blue: 1.0)))
+                            .scaleEffect(1.2)
+                        Text("Đang tải bản đồ LiDAR...")
+                            .font(.system(size: 13))
+                            .foregroundColor(.gray)
+                    }
+                } else if let svg = viewModel.svgMap, !svg.isEmpty {
+                    SVGWebView(svgString: svg)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .cornerRadius(18)
+                        .padding(.horizontal, 8)
+                        .shadow(color: Color.black.opacity(0.18), radius: 8, y: 3)
+                } else {
+                    LiDARRadarScanningView(device: viewModel.device, state: viewModel.state) {
+                        Task { await viewModel.refreshMap() }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .frame(height: screenHeight - 230)
+            
+            Spacer()
         }
+    }
+    
+    @ViewBuilder
+    private var mapHeaderInfo: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Spacer().frame(height: 105)
+            
+            HStack(spacing: 5) {
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.cyan)
+                Text(viewModel.device.friendlyModelName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Color.white)
+                if let mid = viewModel.mapId, !mid.isEmpty {
+                    Text("• \(mid)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color.cyan)
+                }
+                if let cov = viewModel.mapCoverageM2, cov > 0 {
+                    Text("• \(cov) m²")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color(red: 0.0, green: 0.85, blue: 0.45))
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.black.opacity(0.65))
+            .cornerRadius(8)
+            .shadow(color: Color.black.opacity(0.15), radius: 4, y: 2)
+            
+            Spacer()
+        }
+        .padding(.leading, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    
+    @ViewBuilder
+    private var mapOverlayButtons: some View {
+        VStack(spacing: 12) {
+            Spacer().frame(height: 105)
+            
+            Button(action: {
+                Task { await viewModel.refreshMap() }
+                viewModel.toastMessage = "Đang quét lại bản đồ..."
+                viewModel.showToast = true
+            }) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Color(white: 0.25))
+                    .frame(width: 42, height: 42)
+                    .background(Color.white.opacity(0.95))
+                    .clipShape(Circle())
+                    .shadow(color: Color.black.opacity(0.08), radius: 5, y: 2)
+            }
+            
+            Button(action: {
+                viewModel.triggerRelocate()
+            }) {
+                Image(systemName: "location.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                    .frame(width: 42, height: 42)
+                    .background(Color.white.opacity(0.95))
+                    .clipShape(Circle())
+                    .shadow(color: Color.black.opacity(0.08), radius: 5, y: 2)
+            }
+            
+            Button(action: {
+                showBoundaryDialog = true
+            }) {
+                Image(systemName: "hand.raised.slash.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(Color(red: 0.95, green: 0.25, blue: 0.25))
+                    .frame(width: 42, height: 42)
+                    .background(Color.white.opacity(0.95))
+                    .clipShape(Circle())
+                    .shadow(color: Color.black.opacity(0.08), radius: 5, y: 2)
+            }
+            
+            Spacer()
+        }
+        .padding(.trailing, 16)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+    
+    @ViewBuilder
+    private var topNavigationBar: some View {
+        HStack(alignment: .center) {
+            Button(action: {
+                appState.navigateToPicker()
+            }) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundColor(Color(white: 0.15))
+                    .padding(8)
+            }
+            
+            Spacer()
+            
+            VStack(spacing: 3) {
+                HStack(spacing: 6) {
+                    RobotIconThumbnailView(device: viewModel.device, size: 24)
+                    
+                    Text(viewModel.device.displayName)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(Color(white: 0.15))
+                    
+                    Button(action: {
+                        newNameText = viewModel.device.displayName
+                        showRenameAlert = true
+                    }) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 12))
+                            .foregroundColor(.gray)
+                    }
+                }
+                
+                HStack(spacing: 4) {
+                    Image(systemName: viewModel.state.isCharging ? "bolt.fill" : "battery.100")
+                        .font(.system(size: 10))
+                        .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.45))
+                    Text("\(viewModel.state.batteryPercent)%")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color(white: 0.35))
+                    Text("|")
+                        .font(.system(size: 10))
+                        .foregroundColor(Color.gray.opacity(0.5))
+                    Text(viewModel.state.cleanStateText)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Color(white: 0.35))
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.white.opacity(0.85))
+                .cornerRadius(6)
+            }
+            
+            Spacer()
+            
+            Button(action: {
+                viewModel.showMoreSettings = true
+            }) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(Color(white: 0.15))
+                    .padding(8)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+    }
+    
+    @ViewBuilder
+    private var floatingStatusCapsule: some View {
+        VStack {
+            Spacer().frame(height: 52)
+            
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(viewModel.state.isWorking ? Color.blue : Color(red: 0.0, green: 0.75, blue: 0.45))
+                        .frame(width: 7, height: 7)
+                    
+                    Text(viewModel.state.isWorking ? "Robot đang dọn dẹp" : (viewModel.state.isCharging ? "Đang sạc tại trạm" : "Robot đang chờ lệnh"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color(white: 0.2))
+                        .lineLimit(1)
+                }
+                
+                Spacer()
+                
+                Button(action: {
+                    Task { await viewModel.fetchCleaningLogs() }
+                    viewModel.showCleaningLogSheet = true
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("Nhật ký")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.1))
+                    .cornerRadius(8)
+                }
+                
+                Button(action: {
+                    Task { await viewModel.refreshMap() }
+                    viewModel.toastMessage = "Đang quét lại bản đồ..."
+                    viewModel.showToast = true
+                }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("Quét")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundColor(Color(white: 0.3))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color(white: 0.94))
+                    .cornerRadius(8)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Color.white.opacity(0.95))
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.08), radius: 6, y: 2)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color.black.opacity(0.06), lineWidth: 1)
+            )
+            .padding(.horizontal, 14)
+            
+            Spacer()
+        }
+    }
+    
+    @ViewBuilder
+    private func bottomSheetContainer(screenWidth: CGFloat, expandedHeight: CGFloat, offsetY: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 4) {
+                Capsule()
+                    .fill(Color.gray.opacity(0.35))
+                    .frame(width: 40, height: 5)
+                    .padding(.top, 8)
+                
+                HStack(spacing: 4) {
+                    Image(systemName: isSheetExpanded ? "chevron.down" : "chevron.up")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                    Text(isSheetExpanded ? "Thu gọn" : "Vuốt lên xem cài đặt")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Color(white: 0.45))
+                }
+                .padding(.bottom, 4)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                    isSheetExpanded.toggle()
+                }
+            }
+            .highPriorityGesture(sheetDragGesture)
+            
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 16) {
+                    bottomSheetMainActions
+                    
+                    Divider()
+                        .background(Color.gray.opacity(0.15))
+                        .padding(.horizontal, 16)
+                    
+                    VStack(alignment: .leading, spacing: 18) {
+                        smartStationCard
+                        cleaningControlsCard
+                    }
+                    .padding(.horizontal, 20)
+                    
+                    Spacer().frame(height: 100)
+                }
+            }
+            .scrollDisabled(!isSheetExpanded)
+        }
+        .frame(width: screenWidth, height: expandedHeight)
+        .background(Color.white)
+        .cornerRadius(24, corners: [.topLeft, .topRight])
+        .shadow(color: Color.black.opacity(0.12), radius: 12, y: -4)
+        .offset(y: offsetY)
+        .simultaneousGesture(sheetDragGesture)
+    }
+    
+    @ViewBuilder
+    private var bottomSheetMainActions: some View {
+        HStack {
+            Image(systemName: "sparkles")
+                .font(.system(size: 12))
+                .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+            Text("CHẾ ĐỘ DỌN DẸP TỰ ĐỘNG")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(Color(red: 0.92, green: 0.96, blue: 1.0))
+        .cornerRadius(20)
+        .padding(.top, 2)
+        
+        HStack(spacing: 0) {
+            Button(action: {
+                Task { await viewModel.refreshMap() }
+            }) {
+                VStack(spacing: 6) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(white: 0.95))
+                            .frame(width: 50, height: 50)
+                        Image(systemName: "map")
+                            .font(.system(size: 20))
+                            .foregroundColor(Color(white: 0.25))
+                    }
+                    Text("Bản đồ")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(white: 0.35))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            
+            Button(action: {
+                let isCleaning = viewModel.state.cleanState == "clean"
+                viewModel.triggerClean(action: isCleaning ? .pause : .start)
+            }) {
+                VStack(spacing: 6) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color(red: 0.09, green: 0.52, blue: 1.0), Color(red: 0.05, green: 0.38, blue: 0.95)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 66, height: 66)
+                            .shadow(color: Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.35), radius: 10, y: 5)
+                        
+                        Image(systemName: viewModel.state.cleanState == "clean" ? "pause.fill" : "play.fill")
+                            .font(.system(size: 26))
+                            .foregroundColor(.white)
+                    }
+                    
+                    Text(viewModel.state.cleanState == "clean" ? "TẠM DỪNG" : "BẮT ĐẦU")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color(white: 0.2))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            
+            Button(action: {
+                viewModel.triggerCharge()
+            }) {
+                VStack(spacing: 6) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(white: 0.95))
+                            .frame(width: 50, height: 50)
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(Color(white: 0.25))
+                    }
+                    Text("Trạm sạc")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(white: 0.35))
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(.top, 2)
+    }
+    
+    @ViewBuilder
+    private var smartStationCard: some View {
+        if viewModel.device.hasOmniStation {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Image(systemName: "powerplug.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                    Text("Trạm sạc thông minh OMNI")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Color(white: 0.15))
+                    Spacer()
+                    if viewModel.state.isWashingMop {
+                        Text("Đang giặt giẻ...")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.blue)
+                    } else if viewModel.state.isAirDrying {
+                        Text("Đang sấy khí nóng...")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.orange)
+                    } else if viewModel.state.dustbinEmptying {
+                        Text("Đang gom rác...")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.purple)
+                    }
+                }
+                
+                HStack(spacing: 8) {
+                    Button(action: {
+                        viewModel.triggerStationAction(viewModel.state.isWashingMop ? .stopMopWash : .startMopWash)
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: viewModel.state.isWashingMop ? "stop.fill" : "drop.fill")
+                                .font(.system(size: 11))
+                            Text(viewModel.state.isWashingMop ? "Dừng giặt" : "Giặt giẻ")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(viewModel.state.isWashingMop ? .white : Color(red: 0.09, green: 0.47, blue: 1.0))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 36)
+                        .background(viewModel.state.isWashingMop ? Color.blue : Color(red: 0.92, green: 0.96, blue: 1.0))
+                        .cornerRadius(8)
+                    }
+                    
+                    Button(action: {
+                        viewModel.triggerStationAction(viewModel.state.isAirDrying ? .stopAirDrying : .startAirDrying)
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: viewModel.state.isAirDrying ? "stop.fill" : "flame.fill")
+                                .font(.system(size: 11))
+                            Text(viewModel.state.isAirDrying ? "Dừng sấy" : "Sấy khô")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(viewModel.state.isAirDrying ? .white : Color.orange)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 36)
+                        .background(viewModel.state.isAirDrying ? Color.orange : Color.orange.opacity(0.12))
+                        .cornerRadius(8)
+                    }
+                    
+                    Button(action: {
+                        viewModel.triggerStationAction(.emptyDustbin)
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 11))
+                            Text(viewModel.state.dustbinEmptying ? "Gom rác..." : "Gom rác")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(Color.purple)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 36)
+                        .background(Color.purple.opacity(0.12))
+                        .cornerRadius(8)
+                    }
+                }
+            }
+            .padding(12)
+            .background(Color(red: 0.97, green: 0.98, blue: 1.0))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.blue.opacity(0.15), lineWidth: 1)
+            )
+            
+            Divider().padding(.vertical, 2)
+        }
+    }
+    
+    @ViewBuilder
+    private var cleaningControlsCard: some View {
+        HStack {
+            Text("Số lần dọn dẹp")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Color(white: 0.15))
+            Spacer()
+            HStack(spacing: 8) {
+                ForEach([1, 2], id: \.self) { t in
+                    choicePill(title: "\(t) lần", isSelected: viewModel.cleanTimes == t) {
+                        viewModel.setCleanTimes(t)
+                    }
+                }
+            }
+        }
+        
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Lực hút bụi")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Color(white: 0.15))
+            
+            HStack(spacing: 6) {
+                choicePill(title: "Yên tĩnh", isSelected: viewModel.state.fanSpeed == "quiet") {
+                    viewModel.setFanSpeed(.quiet)
+                }
+                choicePill(title: "Tiêu chuẩn", isSelected: viewModel.state.fanSpeed == "standard") {
+                    viewModel.setFanSpeed(.standard)
+                }
+                choicePill(title: "Mạnh", isSelected: viewModel.state.fanSpeed == "max") {
+                    viewModel.setFanSpeed(.max)
+                }
+                choicePill(title: "Siêu mạnh", isSelected: viewModel.state.fanSpeed == "max+") {
+                    viewModel.setFanSpeed(.maxPlus)
+                }
+            }
+        }
+        
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Lượng nước lau sàn")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Color(white: 0.15))
+            
+            HStack(spacing: 8) {
+                ForEach(1...4, id: \.self) { level in
+                    choicePill(title: "Mức \(level)", isSelected: viewModel.state.waterAmount == level) {
+                        viewModel.setWaterAmount(level)
+                    }
+                }
+            }
+        }
+        
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Tự động tăng áp thảm")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color(white: 0.15))
+                Text("Tăng lực hút tối đa khi cảm biến phát hiện thảm")
+                    .font(.system(size: 11))
+                    .foregroundColor(.gray)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { viewModel.state.carpetAutoBoost },
+                set: { _ in viewModel.toggleCarpetBoost() }
+            ))
+            .labelsHidden()
+        }
+        
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Khóa an toàn trẻ em")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color(white: 0.15))
+                Text("Khóa các nút bấm vật lý trên thân robot")
+                    .font(.system(size: 11))
+                    .foregroundColor(.gray)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { viewModel.state.childLock },
+                set: { _ in viewModel.toggleChildLock() }
+            ))
+            .labelsHidden()
+        }
+        
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Âm lượng giọng nói")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color(white: 0.15))
+                Spacer()
+                Text("\(viewModel.state.volume)")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+            }
+            
+            Slider(
+                value: Binding(
+                    get: { Double(viewModel.state.volume) },
+                    set: { viewModel.setVolume(Int($0)) }
+                ),
+                in: 0...10,
+                step: 1
+            )
+            .accentColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+        }
+        
+        Button(action: {
+            viewModel.triggerPlaySound()
+        }) {
+            HStack {
+                Image(systemName: "speaker.wave.3.fill")
+                    .font(.system(size: 14))
+                Text("Tìm DEEBOT của tôi (Phát chuông)")
+                    .font(.system(size: 14, weight: .semibold))
+            }
+            .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .background(Color(red: 0.92, green: 0.96, blue: 1.0))
+            .cornerRadius(10)
+        }
+        
+        Button(action: {
+            viewModel.showMoreSettings = true
+        }) {
+            HStack {
+                Text("Cài đặt nâng cao")
+                    .font(.system(size: 15, weight: .bold))
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .background(Color(red: 0.09, green: 0.47, blue: 1.0))
+            .cornerRadius(12)
+        }
+        .padding(.top, 4)
+    }
+    
+    @ViewBuilder
+    private var toastOverlayView: some View {
+        if viewModel.showToast, let msg = viewModel.toastMessage {
+            VStack {
+                CustomToastView(message: msg)
+                    .padding(.top, 50)
+                Spacer()
+            }
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .animation(.easeInOut(duration: 0.25), value: viewModel.showToast)
+        }
+    }
+    
+    @ViewBuilder
+    private var boundaryDialogContent: some View {
+        Button("Thêm Tường Ảo (Virtual Wall)") {
+            let rx = viewModel.state.robotX
+            let ry = viewModel.state.robotY
+            viewModel.addVirtualWall(x1: rx - 500, y1: ry - 300, x2: rx + 500, y2: ry - 300)
+        }
+        Button("Thêm Vùng Cấm Hút & Lau (No-Go)") {
+            let rx = viewModel.state.robotX
+            let ry = viewModel.state.robotY
+            viewModel.addRestrictedZone(x: rx - 400, y: ry + 200, width: 600, height: 600, type: .noGo)
+        }
+        Button("Thêm Vùng Cấm Lau Nhà (No-Mop)") {
+            let rx = viewModel.state.robotX
+            let ry = viewModel.state.robotY
+            viewModel.addRestrictedZone(x: rx + 300, y: ry, width: 500, height: 500, type: .noMop)
+        }
+        if !viewModel.state.virtualWalls.isEmpty || !viewModel.state.restrictedZones.isEmpty {
+            Button("Xóa Tất Cả Tường Ảo & Vùng Cấm", role: .destructive) {
+                viewModel.state.virtualWalls.removeAll()
+                viewModel.state.restrictedZones.removeAll()
+                Task { await viewModel.updateMapSvg() }
+                viewModel.showToastNotification("Đã xóa tất cả tường ảo và vùng cấm")
+            }
+        }
+        Button("Đóng", role: .cancel) {}
     }
     
     // MARK: - Subcomponents
