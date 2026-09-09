@@ -76,6 +76,7 @@ public enum EcoCRC8 {
 public enum ProvisioningStep: Equatable {
     case idle
     case sendingToRobot(progress: String)
+    case waitingForInternet(message: String)
     case waitingRobotOnline(progress: String)
     case obtainingToken(progress: String)
     case bindingDevice(progress: String)
@@ -273,14 +274,66 @@ public final class EcovacsProvisioningService: ObservableObject {
         return ""
     }
     
+    /// Tự động gỡ cấu hình Wi-Fi Robot để iOS tự động ngắt kết nối và quay về Wi-Fi nhà
+    public func kickRobotWifi(prefix: String = "ECOVACS_") {
+        if #available(iOS 11.0, *) {
+            NEHotspotConfigurationManager.shared.getConfiguredSSIDs { ssids in
+                for ssid in ssids {
+                    let upper = ssid.uppercased()
+                    if upper.hasPrefix("ECOVACS_") || upper.hasPrefix("DEEBOT_") {
+                        print("[Provisioning] Tự động gỡ cấu hình Wi-Fi Robot: \(ssid)")
+                        NEHotspotConfigurationManager.shared.removeConfiguration(forSSID: ssid)
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Kiểm tra xem iPhone đã có kết nối Internet thật sự chưa (để liên lạc với Cloud)
+    public func isInternetAvailable() async -> Bool {
+        guard let url = URL(string: "https://portal.ecouser.net/api/users/user.do") else { return false }
+        var req = URLRequest(url: url)
+        req.httpMethod = "HEAD"
+        req.timeoutInterval = 3.5
+        do {
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            if let http = resp as? HTTPURLResponse, http.statusCode > 0 {
+                return true
+            }
+        } catch {
+            // Thử thêm captive.apple.com để xác nhận kết nối Internet chung
+            if let appleUrl = URL(string: "https://captive.apple.com") {
+                var appleReq = URLRequest(url: appleUrl)
+                appleReq.httpMethod = "HEAD"
+                appleReq.timeoutInterval = 2.5
+                if let (_, appleResp) = try? await URLSession.shared.data(for: appleReq),
+                   let http = appleResp as? HTTPURLResponse, http.statusCode > 0 {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     // MARK: - Bước 3: Polling Cloud lấy mã bí mật dùng 1 lần (bindtoken)
     public func pollBindTokenFromCloud(
         sck2: String,
-        maxAttempts: Int = 20
+        maxAttempts: Int = 30
     ) async throws -> String {
         let creds = try await EcovacsAuthService.shared.ensureValidToken()
         guard !creds.userId.isEmpty else {
             throw NSError(domain: "Provisioning", code: -5, userInfo: [NSLocalizedDescriptionKey: "Chưa đăng nhập tài khoản Ecovacs! Vui lòng đăng nhập trước."])
+        }
+        
+        // 1. Tự động kiểm tra mạng Internet trước: Nếu iPhone đang bị ngắt mạng (do vừa rời Wi-Fi Robot và 4G đang tắt)
+        // -> Tạm dừng đếm ngược và thông báo cho người dùng bật lại 4G / nối Wi-Fi nhà
+        var isOnline = await isInternetAvailable()
+        var waitNetCount = 0
+        while !isOnline && waitNetCount < 30 {
+            self.step = .waitingForInternet(message: "Robot đã nhận Wi-Fi! Hãy BẬT LẠI 4G (hoặc vào Cài đặt đổi về Wi-Fi nhà) để tiếp tục hoàn tất...")
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+            isOnline = await isInternetAvailable()
+            waitNetCount += 1
         }
         
         let ituid = creds.userId
@@ -326,12 +379,24 @@ public final class EcovacsProvisioningService: ObservableObject {
                     }
                 }
             } catch {
-                // Tạm thời bỏ qua lỗi mạng khi điện thoại đang chuyển từ mạng Robot về Wi-Fi nhà
-                print("[EcovacsProvisioning] Lần thử \(attempt) chưa có mạng hoặc robot chưa lên: \(error.localizedDescription)")
+                print("[EcovacsProvisioning] Lần thử \(attempt) chưa lấy được bindtoken: \(error.localizedDescription)")
+            }
+            
+            // Cứ mỗi 3 lần thử, kiểm tra xem Robot đã xuất hiện trong danh sách thiết bị chưa
+            if attempt % 3 == 0 {
+                if let devices = try? await EcovacsDeviceService.shared.fetchDevices(), !devices.isEmpty {
+                    print("[EcovacsProvisioning] Đã phát hiện Robot mới xuất hiện trên Cloud!")
+                    return "cloud_auto_bound"
+                }
             }
             
             // Đợi 2.5 giây cho lần thử tiếp theo
             try await Task.sleep(nanoseconds: 2_500_000_000)
+        }
+        
+        // Kiểm tra lần cuối trước khi báo lỗi
+        if let devices = try? await EcovacsDeviceService.shared.fetchDevices(), !devices.isEmpty {
+            return "cloud_auto_bound"
         }
         
         throw NSError(domain: "Provisioning", code: -8, userInfo: [NSLocalizedDescriptionKey: "Hết thời gian chờ (Timeout). Robot chưa kết nối được với Wi-Fi nhà bạn hoặc mật khẩu Wi-Fi không đúng."])
@@ -361,10 +426,10 @@ public final class EcovacsProvisioningService: ObservableObject {
             // 1. Gửi cấu hình sang Robot AP
             let sck2 = try await sendWifiCredentialsToRobot(ssid: ssid, password: password)
             
-            // 2. Hướng dẫn người dùng nếu cần chuyển lại Wi-Fi nhà
-            self.step = .waitingRobotOnline(progress: "Robot đã nhận Wi-Fi! Đang chờ Robot kết nối vào Router...")
+            // 2. Tự động đá Wi-Fi Robot để iOS quay về Wi-Fi nhà
+            kickRobotWifi()
             
-            // 3. Polling Cloud lấy bindtoken
+            // 3. Polling Cloud lấy bindtoken (có cơ chế chờ Internet thông minh)
             let token = try await pollBindTokenFromCloud(sck2: sck2)
             
             // 4. Kích hoạt và gán vào tài khoản

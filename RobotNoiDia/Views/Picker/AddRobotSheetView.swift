@@ -470,6 +470,52 @@ public struct AddRobotSheetView: View {
             switch provService.step {
             case .idle:
                 EmptyView()
+            case .waitingForInternet(let msg):
+                VStack(spacing: 10) {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(Color(red: 0.85, green: 0.45, blue: 0.0))
+                            .padding(.top, 2)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Đã nạp Wi-Fi vào Robot!")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(Color(red: 0.7, green: 0.3, blue: 0.0))
+                            Text(msg)
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(red: 0.4, green: 0.25, blue: 0.0))
+                                .lineSpacing(2)
+                        }
+                        Spacer()
+                    }
+                    
+                    HStack(spacing: 10) {
+                        Button(action: {
+                            HapticManager.shared.light()
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "gear")
+                                Text("Mở Cài Đặt Wi-Fi iPhone")
+                            }
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(Color(red: 0.09, green: 0.47, blue: 1.0))
+                            .cornerRadius(8)
+                        }
+                        
+                        Spacer()
+                    }
+                }
+                .padding(14)
+                .background(Color.yellow.opacity(0.18))
+                .cornerRadius(12)
+                
             case .sendingToRobot(let msg), .waitingRobotOnline(let msg), .obtainingToken(let msg), .bindingDevice(let msg):
                 HStack(spacing: 12) {
                     ProgressView()
