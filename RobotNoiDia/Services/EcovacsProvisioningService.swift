@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import Darwin
+import NetworkExtension
 
 /// Helper điều phối luồng hoàn thành của Continuation an toàn đa luồng (Thread-safe Continuation Gate)
 private final class ContinuationGate<T>: @unchecked Sendable {
