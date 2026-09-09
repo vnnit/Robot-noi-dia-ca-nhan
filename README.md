@@ -65,7 +65,9 @@
 
 ---
 
-### ⚡ Tối ưu phản hồi tức thời & Cập nhật Bản đồ Realtime (v1.1.51 - v1.1.52):
+### ⚡ Tối ưu phản hồi & Cập nhật Bản đồ Realtime (v1.1.51 - v1.1.53):
+- **Tinh chỉnh giao diện Quản lý (v1.1.53)**:
+  - Loại bỏ hoàn toàn nhãn "Tức thời" trên thanh tiêu đề Quản lý robot, giúp giao diện tối giản, trực quan và đồng bộ chuẩn ứng dụng native.
 - **Hiệu chỉnh chuẩn xác Icon Robot & Trạm Sạc (v1.1.52)**:
   - Khắc phục lỗi đảo vị trí hiển thị: Chấm tròn xanh công nghệ có mũi tên định hướng hiện thị chuẩn xác là **Robot (Deebot)**, biểu tượng pin vàng có tia sét hiển thị chuẩn xác là **Trạm Sạc (Charging Dock)**.
   - Tối ưu hóa đồ họa vector SVG: Tăng cường độ nét, hiệu ứng đổ bóng phát quang và mũi tên hướng di chuyển thời gian thực khi robot quay góc dọn dẹp.
