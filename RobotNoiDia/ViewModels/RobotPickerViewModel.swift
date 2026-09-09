@@ -7,6 +7,9 @@ public final class RobotPickerViewModel: ObservableObject {
     @Published public var isLoading: Bool = false
     @Published public var isRefreshing: Bool = false
     @Published public var errorMessage: String? = nil
+    @Published public var showAddRobotSheet: Bool = false
+    @Published public var isSyncingCloud: Bool = false
+
     
     private let deviceService = EcovacsDeviceService.shared
     private var refreshTimer: Timer?
@@ -115,7 +118,64 @@ public final class RobotPickerViewModel: ObservableObject {
         refreshTimer = nil
     }
     
+    // MARK: - Quản Lý & Thêm Robot Mới
+    public func addManualRobot(did: String, name: String, preset: PresetRobotModel) {
+        let cleanDid = did.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanDid.isEmpty else { return }
+        
+        let customName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalName = customName.isEmpty ? preset.name : customName
+        
+        let newDevice = DeviceModel(
+            did: cleanDid,
+            name: finalName,
+            nick: finalName,
+            model: preset.modelCode,
+            deviceClass: preset.deviceClass,
+            company: preset.company,
+            status: 1,
+            icon: preset.defaultIcon,
+            fwVer: "v1.0.0",
+            resource: preset.resource,
+            battery: 100,
+            isCharging: true,
+            cleanState: "charging",
+            cleanStateText: "Đang sạc"
+        )
+        
+        deviceService.addCustomDevice(newDevice)
+        self.devices = deviceService.getCachedDevices()
+        RobotImageCacheManager.shared.preloadImages(for: self.devices)
+        HapticManager.shared.success()
+    }
+    
+    public func deleteRobot(did: String) {
+        HapticManager.shared.medium()
+        deviceService.deleteDevice(did: did)
+        self.devices = deviceService.getCachedDevices()
+    }
+    
+    public func syncCloudRobots() async -> (success: Bool, message: String) {
+        isSyncingCloud = true
+        defer { isSyncingCloud = false }
+        
+        do {
+            let result = try await deviceService.syncNewCloudDevices(forceRefreshAuth: true)
+            self.devices = deviceService.getCachedDevices()
+            RobotImageCacheManager.shared.preloadImages(for: self.devices)
+            HapticManager.shared.success()
+            if result.added > 0 {
+                return (true, "Đã tìm thấy \(result.added) robot mới! Tổng cộng: \(result.total) robot.")
+            } else {
+                return (true, "Tất cả robot trong tài khoản (\(result.total) robot) đã được đồng bộ đầy đủ.")
+            }
+        } catch {
+            return (false, "Lỗi kết nối Ecovacs Cloud: \(error.localizedDescription)")
+        }
+    }
+    
     deinit {
+
         refreshTimer?.invalidate()
     }
 }

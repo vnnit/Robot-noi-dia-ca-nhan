@@ -274,3 +274,35 @@ public struct CleaningLogItem: Identifiable, Codable, Hashable {
         self.result = result
     }
 }
+
+// MARK: - Mẫu Robot Ecovacs Phổ Biến Để Thêm Mới
+public struct PresetRobotModel: Identifiable, Hashable {
+    public var id: String { name }
+    public let name: String
+    public let modelCode: String
+    public let deviceClass: String
+    public let defaultIcon: String?
+    public let company: String
+    public let resource: String
+    
+    public init(name: String, modelCode: String, deviceClass: String, defaultIcon: String? = nil, company: String = "eco-ng", resource: String = "pwMl") {
+        self.name = name
+        self.modelCode = modelCode
+        self.deviceClass = deviceClass
+        self.defaultIcon = defaultIcon
+        self.company = company
+        self.resource = resource
+    }
+    
+    public static let presets: [PresetRobotModel] = [
+        PresetRobotModel(name: "DEEBOT T10 TURBO", modelCode: "0ea2a0", deviceClass: "0ea2a0", defaultIcon: "628465d99475a40009ed9f03"),
+        PresetRobotModel(name: "DEEBOT T9 AIVI", modelCode: "yna5xi", deviceClass: "yna5xi", defaultIcon: "603f50488da56e0008ce7cb7"),
+        PresetRobotModel(name: "DEEBOT T10 OMNI", modelCode: "0ea2a0", deviceClass: "0ea2a0", defaultIcon: "628465d99475a40009ed9f03"),
+        PresetRobotModel(name: "DEEBOT X1 OMNI", modelCode: "x1omni", deviceClass: "x1omni", defaultIcon: "61d3f9e98da56e0008cf1122"),
+        PresetRobotModel(name: "DEEBOT T20 OMNI", modelCode: "t20omni", deviceClass: "t20omni", defaultIcon: nil),
+        PresetRobotModel(name: "DEEBOT T30 PRO", modelCode: "t30pro", deviceClass: "t30pro", defaultIcon: nil),
+        PresetRobotModel(name: "DEEBOT N8 PRO", modelCode: "n8pro", deviceClass: "n8pro", defaultIcon: nil),
+        PresetRobotModel(name: "DEEBOT Khác (Tùy chỉnh)", modelCode: "DEEBOT", deviceClass: "yna5xi", defaultIcon: nil)
+    ]
+}
+

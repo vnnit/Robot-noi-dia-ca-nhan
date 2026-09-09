@@ -44,6 +44,25 @@ public struct RobotPickerView: View {
                     
                     Spacer()
                     
+                    // Nút Thêm Robot Mới (+)
+                    Button(action: {
+                        HapticManager.shared.light()
+                        viewModel.showAddRobotSheet = true
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 13, weight: .bold))
+                            Text("Thêm Robot")
+                                .font(.system(size: 12, weight: .bold))
+                        }
+                        .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(14)
+                    }
+                    .padding(.trailing, 10)
+                    
                     // Chuông thông báo có chấm đỏ
                     ZStack(alignment: .topTrailing) {
                         Image(systemName: "bell")
@@ -55,7 +74,7 @@ public struct RobotPickerView: View {
                             .frame(width: 8, height: 8)
                             .offset(x: 2, y: -2)
                     }
-                    .padding(.trailing, 16)
+                    .padding(.trailing, 14)
                     
                     // Nút làm mới danh sách thiết bị
                     Button(action: {
@@ -69,6 +88,7 @@ public struct RobotPickerView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 10)
+
                 
                 if viewModel.isLoading && viewModel.devices.isEmpty {
                     Spacer()
@@ -94,35 +114,55 @@ public struct RobotPickerView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 32)
                         
-                        HStack(spacing: 16) {
+                        VStack(spacing: 12) {
                             Button(action: {
-                                viewModel.loadDevices(showLoading: true, forceRefreshAuth: true)
+                                HapticManager.shared.light()
+                                viewModel.showAddRobotSheet = true
                             }) {
                                 HStack(spacing: 6) {
-                                    Image(systemName: "arrow.clockwise")
-                                    Text("Thử lại")
+                                    Image(systemName: "plus.circle.fill")
+                                    Text("Thêm Robot Mới")
                                 }
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.system(size: 15, weight: .bold))
                                 .foregroundColor(.white)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 10)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 12)
                                 .background(Color(red: 0.09, green: 0.47, blue: 1.0))
-                                .cornerRadius(8)
+                                .cornerRadius(10)
+                                .shadow(color: Color.blue.opacity(0.3), radius: 6, y: 3)
                             }
                             
-                            Button(action: { showLogoutAlert = true }) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                                    Text("Đăng nhập lại")
+                            HStack(spacing: 16) {
+                                Button(action: {
+                                    viewModel.loadDevices(showLoading: true, forceRefreshAuth: true)
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "arrow.clockwise")
+                                        Text("Thử lại")
+                                    }
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(Color(white: 0.25))
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Color(white: 0.92))
+                                    .cornerRadius(8)
                                 }
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(Color(white: 0.25))
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 10)
-                                .background(Color(white: 0.92))
-                                .cornerRadius(8)
+                                
+                                Button(action: { showLogoutAlert = true }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                                        Text("Đăng nhập lại")
+                                    }
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(Color(white: 0.25))
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Color(white: 0.92))
+                                    .cornerRadius(8)
+                                }
                             }
                         }
+
                     }
                     Spacer()
                 } else {
@@ -422,7 +462,11 @@ public struct RobotPickerView: View {
                 secondaryButton: .cancel(Text("Hủy"))
             )
         }
+        .sheet(isPresented: $viewModel.showAddRobotSheet) {
+            AddRobotSheetView(viewModel: viewModel)
+        }
     }
+
     
     private func showToastNotify(_ msg: String) {
         toastMessage = msg

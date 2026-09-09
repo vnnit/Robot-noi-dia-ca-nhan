@@ -15,6 +15,7 @@ public final class EcovacsDeviceService {
     }
     
     private let cacheKey = "cached_devices_list_v1"
+    private let customDevicesKey = "custom_added_devices_v1"
     
     // MARK: - Quản lý Cache Cục bộ (Tải tức thì 0ms)
     public func getCachedDevices() -> [DeviceModel] {
@@ -32,6 +33,47 @@ public final class EcovacsDeviceService {
         }
     }
     
+    public func getCustomDevices() -> [DeviceModel] {
+        guard let data = UserDefaults.standard.data(forKey: customDevicesKey),
+              let list = try? JSONDecoder().decode([DeviceModel].self, from: data) else {
+            return []
+        }
+        return list
+    }
+    
+    public func saveCustomDevices(_ devices: [DeviceModel]) {
+        if let data = try? JSONEncoder().encode(devices) {
+            UserDefaults.standard.set(data, forKey: customDevicesKey)
+        }
+    }
+    
+    public func addCustomDevice(_ device: DeviceModel) {
+        var customs = getCustomDevices()
+        customs.removeAll { $0.did == device.did }
+        customs.append(device)
+        saveCustomDevices(customs)
+        
+        var all = getCachedDevices()
+        if let idx = all.firstIndex(where: { $0.did == device.did }) {
+            all[idx] = device
+        } else {
+            all.append(device)
+        }
+        saveCachedDevices(all)
+    }
+    
+    public func deleteDevice(did: String) {
+        var customs = getCustomDevices()
+        customs.removeAll { $0.did == did }
+        saveCustomDevices(customs)
+        
+        var all = getCachedDevices()
+        all.removeAll { $0.did == did }
+        if let data = try? JSONEncoder().encode(all) {
+            UserDefaults.standard.set(data, forKey: cacheKey)
+        }
+    }
+    
     private let rawJsonCacheKey = "cached_raw_devices_json"
     
     public func getCachedRawDevicesJson() -> String {
@@ -40,8 +82,10 @@ public final class EcovacsDeviceService {
     
     public func clearCache() {
         UserDefaults.standard.removeObject(forKey: cacheKey)
+        UserDefaults.standard.removeObject(forKey: customDevicesKey)
         UserDefaults.standard.removeObject(forKey: rawJsonCacheKey)
     }
+
     
     // MARK: - 1. Lấy danh sách Robot từ Ecovacs Cloud
     public func fetchDevices(forceRefreshAuth: Bool = false) async throws -> [DeviceModel] {
@@ -161,11 +205,29 @@ public final class EcovacsDeviceService {
             list.append(modelObj)
         }
         
+        // Hợp nhất với danh sách robot thêm thủ công (không ghi đè robot trùng did từ Cloud)
+        let customs = getCustomDevices()
+        for custom in customs {
+            if !list.contains(where: { $0.did == custom.did }) {
+                list.append(custom)
+            }
+        }
+        
         if !list.isEmpty {
             saveCachedDevices(list)
         }
         return list
     }
+    
+    /// Đồng bộ tìm kiếm robot mới từ Ecovacs Cloud
+    public func syncNewCloudDevices(forceRefreshAuth: Bool = false) async throws -> (total: Int, added: Int) {
+        let beforeDids = Set(getCachedDevices().map { $0.did })
+        let currentList = try await fetchDevices(forceRefreshAuth: forceRefreshAuth)
+        let afterDids = Set(currentList.map { $0.did })
+        let newCount = afterDids.subtracting(beforeDids).count
+        return (total: currentList.count, added: newCount)
+    }
+
     
     // MARK: - 2. Gửi lệnh chung (Direct CloudCtl REST)
     public func executeCommand(
