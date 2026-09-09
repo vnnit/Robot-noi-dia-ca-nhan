@@ -166,9 +166,9 @@ public struct AddRobotSheetView: View {
                 HapticManager.shared.medium()
                 Task {
                     let res = await viewModel.syncCloudRobots()
-                    if res.isSuccess {
+                    if res.success {
                         HapticManager.shared.success()
-                        syncStatusMessage = "Đồng bộ thành công! Tìm thấy \(res.deviceCount) robot."
+                        syncStatusMessage = res.message
                         isSyncSuccess = true
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                             dismiss()
