@@ -65,14 +65,17 @@
 
 ---
 
-### ⚡ Tối ưu phản hồi tức thời (v1.1.50):
-- **Phát lệnh điều khiển 2 chiều qua Socket MQTT (Zero-HTTP Overhead)**: Toàn bộ lệnh hành động (Bắt đầu dọn, Tạm dừng, Về dock, D-Pad thủ công, Đổi lực hút, Đổi lượng nước, Thao tác trạm sạc...) được chuyển phát trực tiếp qua luồng kết nối **MQTT Socket (TLS port 8883)** đang mở (`iot/p2p/.../q/.../j`).
-- **Tốc độ phản xạ tức thời**: Giảm thời gian trễ từ **1.5s - 3.5s (REST HTTP)** xuống chỉ còn **~100ms - 200ms**, robot phản ứng ngay khi bấm nút.
-- **Cơ chế dự phòng kép (Hybrid Fallback)**: Tự động dùng kênh HTTP REST `devmanager.do` khi socket mất kết nối hoặc khi truy vấn dữ liệu nền.
-- **Huy hiệu kết nối trực quan**: Hiển thị badge `⚡ Tức thời` màu xanh trên thanh tiêu đề khi kênh Socket siêu tốc đang hoạt động.
+### ⚡ Tối ưu phản hồi tức thời & Cập nhật Bản đồ Realtime (v1.1.51):
+- **Khắc phục triệt để lỗi spam thông báo**:
+  - Loại bỏ hoàn toàn xung đột trạng thái khiến robot bị nhận diện luân phiên giữa "đang dọn dẹp" và "về trạm sạc".
+  - Bổ sung bộ lọc Rate-Limiter 15s cho từng thiết bị và yêu cầu phiên dọn dẹp thực tế tối thiểu trước khi kích hoạt thông báo cập bến trạm sạc.
+- **Bản đồ cập nhật tọa độ & đường đi Realtime (2s/lần)**:
+  - Khắc phục lỗi đảo ngược trục tung Y giữa hệ tọa độ Cartesian của Robot và hệ tọa độ màn hình SVG (-y / 50.0).
+  - Tự động phát lệnh `getPos` trực tiếp qua Socket MQTT siêu tốc mỗi 2 giây khi robot di chuyển dọn dẹp, giúp icon robot lướt mượt mà và vẽ vệt quỹ đạo trực tiếp trên DOM mà không gây chớp giật WebView.
+  - Định dạng chuẩn mảng dữ liệu yêu cầu `["chargePos", "deebotPos"]` cho cả cổng MQTT Socket và REST Gateway.
 
 ### 🚀 Đang nghiên cứu & cập nhật tiếp theo:
-- [x] **Điều khiển trực tiếp 2 chiều qua Socket MQTT**: Đã hoàn thành trong bản v1.1.50.
+- [x] **Điều khiển trực tiếp 2 chiều qua Socket MQTT & Realtime Map**: Đã hoàn thành trong bản v1.1.51.
 - [ ] **Giao tiếp mạng nội bộ Local LAN / Wi-Fi**: Tiếp tục khai thác dữ liệu giải mã APK Ecovacs (CoAP, mDNS, Matter/CHIP, UDP) để mở rộng kết nối trực tiếp trong mạng gia đình mà không cần ra Internet.
 
 ---
