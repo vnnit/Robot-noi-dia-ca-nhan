@@ -478,6 +478,8 @@ public final class EcovacsDeviceService {
             self.dockPos = dockPos
             self.viewBox = viewBox
         }
+    }
+    
     // MARK: - Tải bản đồ LiDAR độ phân giải cao từ Máy chủ DIY (HƯỚNG 2 - v1.1.15)
     public func fetchMapFromDIYServer(device: DeviceModel) async -> MapResult? {
         let baseUrl = Constants.diyServerBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -592,7 +594,7 @@ public final class EcovacsDeviceService {
             
             let vals = valueStr.split(separator: ",").map(String.init)
             for (idx, val) in vals.enumerated() {
-                let cleanVal = val.trimmingCharacters(in: .whitespacesAndNewlines)
+                let cleanVal = val.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
                 if !cleanVal.isEmpty && cleanVal != "1295764014" && cleanVal != "0" {
                     let r = idx / cellWidth
                     let c = idx % cellWidth
