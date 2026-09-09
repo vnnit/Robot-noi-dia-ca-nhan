@@ -249,9 +249,14 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
         
         // Theo dõi Báo sự cố / Báo lỗi phần cứng (Hardware error)
         let currentError = state.errorCode
+        let currentStationError = state.stationErrorCode
+        let isDustbinFull = state.dustbinFull
+        
         stateQueue.async { [weak self] in
             guard let self = self else { return }
             let prevError = self.lastErrorCodePerDevice[did] ?? 0
+            
+            // 1. Cảnh báo lỗi robot phần cứng
             if currentError != prevError && currentError > 0 {
                 let desc = Constants.errorDescriptions[currentError] ?? "Robot gặp sự cố hoặc mắc kẹt."
                 self.sendNotification(
@@ -260,6 +265,69 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
                 )
             }
             self.lastErrorCodePerDevice[did] = currentError
+            
+            let now = Date()
+            let canNotify = { (type: String, minInterval: TimeInterval) -> Bool in
+                if let lastDate = self.lastNotificationTimestamps[did]?[type] {
+                    return now.timeIntervalSince(lastDate) >= minInterval
+                }
+                return true
+            }
+            let markNotified = { (type: String) in
+                if self.lastNotificationTimestamps[did] == nil {
+                    self.lastNotificationTimestamps[did] = [:]
+                }
+                self.lastNotificationTimestamps[did]?[type] = now
+            }
+            
+            // 2. Cảnh báo Trạm sạc: Hết nước sạch hoặc bình chứa nước bẩn đã đầy (mã 314 / 101)
+            if (currentError == 314 || currentError == 101 || currentStationError == 314) && canNotify("station_water", 180) {
+                markNotified("station_water")
+                self.sendNotification(
+                    title: "⚠️ Trạm sạc \(devName): Cần thêm/thay nước",
+                    body: "Hết nước sạch hoặc bình chứa nước bẩn đã đầy. Vui lòng thay nước để robot tiếp tục giặt giẻ."
+                )
+            }
+            
+            // 3. Cảnh báo Trạm hút rác: Túi gom rác đã đầy (Auto-Empty dustbag full)
+            if isDustbinFull && canNotify("dustbag_full", 3600) {
+                markNotified("dustbag_full")
+                self.sendNotification(
+                    title: "🗑 Trạm sạc \(devName): Túi rác đã đầy",
+                    body: "Túi đựng rác trong trạm hút tự động đã đầy. Vui lòng kiểm tra và thay túi rác mới."
+                )
+            }
+        }
+    }
+    
+    // MARK: - Nhắc nhở bảo dưỡng phụ kiện định kỳ (< 5% tuổi thọ)
+    public func notifyConsumablesChange(device: DeviceModel, consumables: ConsumablesData) {
+        guard isEnabled else { return }
+        let devName = device.displayName
+        let did = device.did
+        let now = Date()
+        
+        stateQueue.async { [weak self] in
+            guard let self = self else { return }
+            for item in consumables.allItems {
+                if item.percent < 5 {
+                    let key = "consumable_\(item.id)"
+                    var shouldSend = true
+                    if let lastDate = self.lastNotificationTimestamps[did]?[key] {
+                        shouldSend = now.timeIntervalSince(lastDate) >= 86400 // Cooldown 24 tiếng chống spam
+                    }
+                    if shouldSend {
+                        if self.lastNotificationTimestamps[did] == nil {
+                            self.lastNotificationTimestamps[did] = [:]
+                        }
+                        self.lastNotificationTimestamps[did]?[key] = now
+                        self.sendNotification(
+                            title: "🛠 Nhắc nhở bảo dưỡng: \(devName)",
+                            body: "\(item.type.title) chỉ còn \(item.percent)% tuổi thọ (\(item.leftHours)h). Vui lòng vệ sinh hoặc thay thế linh kiện."
+                        )
+                    }
+                }
+            }
         }
     }
     

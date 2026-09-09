@@ -68,6 +68,9 @@ public struct RobotControlView: View {
         .sheet(isPresented: $viewModel.showScheduleSheet) {
             ScheduleView(viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.showStationSettingsSheet) {
+            StationSettingsSheetView(viewModel: viewModel)
+        }
         .alert("Đổi tên Robot", isPresented: $showRenameAlert) {
             TextField("Nhập tên mới", text: $newNameText)
             Button("Lưu") {
@@ -131,6 +134,16 @@ public struct RobotControlView: View {
                             trajectory: viewModel.state.trajectory
                         )
                         .disabled(viewModel.isEditingBoundaries)
+                        
+                        if viewModel.cleanModeTab == "custom" && !viewModel.isEditingBoundaries {
+                            GeometryReader { geo in
+                                AreaCleanBoxOverlayView(
+                                    viewModel: viewModel,
+                                    containerSize: geo.size,
+                                    mapBounds: viewModel.mapBounds
+                                )
+                            }
+                        }
                         
                         if viewModel.isEditingBoundaries {
                             GeometryReader { geo in
@@ -445,7 +458,7 @@ public struct RobotControlView: View {
             .scrollDisabled(!isSheetExpanded)
         }
         .frame(width: screenWidth, height: expandedHeight)
-        .background(Color.white)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
         .cornerRadius(24, corners: [.topLeft, .topRight])
         .shadow(color: Color.black.opacity(0.12), radius: 12, y: -4)
         .offset(y: offsetY)
@@ -454,110 +467,229 @@ public struct RobotControlView: View {
     
     @ViewBuilder
     private var bottomSheetMainActions: some View {
-        HStack {
-            Image(systemName: "sparkles")
-                .font(.system(size: 12))
-                .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-            Text("CHẾ ĐỘ DỌN DẸP TỰ ĐỘNG")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .background(Color(red: 0.92, green: 0.96, blue: 1.0))
-        .cornerRadius(20)
-        .padding(.top, 2)
-        
-        HStack(spacing: 0) {
-            Button(action: {
-                Task { await viewModel.refreshMap() }
-            }) {
-                VStack(spacing: 6) {
-                    ZStack {
-                        Circle()
-                            .fill(Color(white: 0.95))
-                            .frame(width: 50, height: 50)
-                        Image(systemName: "map")
-                            .font(.system(size: 20))
-                            .foregroundColor(Color(white: 0.25))
-                    }
-                    Text("Bản đồ")
-                        .font(.system(size: 11))
-                        .foregroundColor(Color(white: 0.35))
-                }
+        VStack(spacing: 12) {
+            // MARK: - 1. Bộ Chọn Chế Độ Dọn Dẹp (Auto / Theo Phòng / Khoanh Vùng)
+            HStack(spacing: 6) {
+                cleanModeTabButton(title: "Tự động", mode: "auto", icon: "sparkles")
+                cleanModeTabButton(title: "Theo phòng", mode: "area", icon: "square.split.2x2.fill")
+                cleanModeTabButton(title: "Khoanh vùng", mode: "custom", icon: "viewfinder")
             }
-            .frame(maxWidth: .infinity)
+            .padding(3)
+            .background(Color(UIColor.tertiarySystemFill))
+            .cornerRadius(12)
+            .padding(.horizontal, 16)
             
-            Button(action: {
-                let isCleaning = viewModel.state.cleanState == "clean"
-                viewModel.triggerClean(action: isCleaning ? .pause : .start)
-            }) {
-                VStack(spacing: 6) {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color(red: 0.09, green: 0.52, blue: 1.0), Color(red: 0.05, green: 0.38, blue: 0.95)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 66, height: 66)
-                            .shadow(color: Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.35), radius: 10, y: 5)
-                        
-                        Image(systemName: viewModel.state.cleanState == "clean" ? "pause.fill" : "play.fill")
-                            .font(.system(size: 26))
-                            .foregroundColor(.white)
-                    }
-                    
-                    Text(viewModel.state.cleanState == "clean" ? "TẠM DỪNG" : "BẮT ĐẦU")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Color(white: 0.2))
-                }
+            // MARK: - 2. Thanh Chọn Phòng (khi mode == "area")
+            if viewModel.cleanModeTab == "area" {
+                roomSelectionBar
+            } else if viewModel.cleanModeTab == "custom" {
+                areaSelectionInfoBar
             }
-            .frame(maxWidth: .infinity)
             
-            if viewModel.device.hasAutoEmptyStation && viewModel.state.isCharging {
+            // MARK: - 3. Các Nút Thao Tác Chính
+            HStack(spacing: 0) {
+                // Nút Bản đồ
                 Button(action: {
-                    viewModel.triggerStationAction(.emptyDustbin)
+                    HapticManager.shared.light()
+                    Task { await viewModel.refreshMap() }
                 }) {
                     VStack(spacing: 6) {
                         ZStack {
                             Circle()
-                                .fill(Color.purple.opacity(0.15))
+                                .fill(Color(UIColor.systemFill))
                                 .frame(width: 50, height: 50)
-                            Image(systemName: "trash.fill")
+                            Image(systemName: "map")
                                 .font(.system(size: 20))
+                                .foregroundColor(Color(UIColor.label))
+                        }
+                        Text("Bản đồ")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(UIColor.secondaryLabel))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                
+                // Nút BẮT ĐẦU / TẠM DỪNG Chính Giữa
+                Button(action: {
+                    viewModel.triggerStartClean()
+                }) {
+                    VStack(spacing: 6) {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color(red: 0.09, green: 0.52, blue: 1.0), Color(red: 0.05, green: 0.38, blue: 0.95)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 66, height: 66)
+                                .shadow(color: Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.35), radius: 10, y: 5)
+                            
+                            Image(systemName: viewModel.state.cleanState == "clean" ? "pause.fill" : "play.fill")
+                                .font(.system(size: 26))
+                                .foregroundColor(.white)
+                        }
+                        
+                        Text(mainCleanButtonTitle)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color(UIColor.label))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                
+                // Nút Dọn rác hoặc Về trạm sạc
+                if viewModel.device.hasAutoEmptyStation && viewModel.state.isCharging {
+                    Button(action: {
+                        HapticManager.shared.medium()
+                        viewModel.triggerStationAction(.emptyDustbin)
+                    }) {
+                        VStack(spacing: 6) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.purple.opacity(0.15))
+                                    .frame(width: 50, height: 50)
+                                Image(systemName: "trash.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(Color.purple)
+                            }
+                            Text(viewModel.state.dustbinEmptying ? "Đang gom..." : "Dọn rác")
+                                .font(.system(size: 11, weight: .bold))
                                 .foregroundColor(Color.purple)
                         }
-                        Text(viewModel.state.dustbinEmptying ? "Đang dọn..." : "Dọn rác")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color.purple)
                     }
-                }
-                .frame(maxWidth: .infinity)
-            } else {
-                Button(action: {
-                    viewModel.triggerCharge()
-                }) {
-                    VStack(spacing: 6) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(white: 0.95))
-                                .frame(width: 50, height: 50)
-                            Image(systemName: "bolt.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(Color(white: 0.25))
+                    .frame(maxWidth: .infinity)
+                } else {
+                    Button(action: {
+                        viewModel.triggerCharge()
+                    }) {
+                        VStack(spacing: 6) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(UIColor.systemFill))
+                                    .frame(width: 50, height: 50)
+                                Image(systemName: "bolt.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(Color(UIColor.label))
+                            }
+                            Text("Trạm sạc")
+                                .font(.system(size: 11))
+                                .foregroundColor(Color(UIColor.secondaryLabel))
                         }
-                        Text("Trạm sạc")
-                            .font(.system(size: 11))
-                            .foregroundColor(Color(white: 0.35))
                     }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
             }
         }
-        .padding(.top, 2)
+        .padding(.top, 4)
+    }
+    
+    private var mainCleanButtonTitle: String {
+        if viewModel.state.cleanState == "clean" {
+            return "TẠM DỪNG"
+        }
+        switch viewModel.cleanModeTab {
+        case "area":
+            return viewModel.selectedRoomIds.isEmpty ? "CHỌN PHÒNG" : "DỌN PHÒNG (\(viewModel.selectedRoomIds.count))"
+        case "custom":
+            return "DỌN VÙNG"
+        default:
+            return "BẮT ĐẦU"
+        }
+    }
+    
+    private func cleanModeTabButton(title: String, mode: String, icon: String) -> some View {
+        let isSelected = viewModel.cleanModeTab == mode
+        return Button(action: {
+            HapticManager.shared.selection()
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                viewModel.cleanModeTab = mode
+            }
+        }) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                Text(title)
+                    .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+            }
+            .foregroundColor(isSelected ? Color(red: 0.09, green: 0.47, blue: 1.0) : Color(UIColor.secondaryLabel))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
+            .background(isSelected ? Color(UIColor.secondarySystemGroupedBackground) : Color.clear)
+            .cornerRadius(10)
+            .shadow(color: isSelected ? Color.black.opacity(0.06) : Color.clear, radius: 3, y: 1)
+        }
+    }
+    
+    private var roomSelectionBar: some View {
+        VStack(spacing: 6) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    // Nút chọn tất cả
+                    Button(action: {
+                        if viewModel.selectedRoomIds.count == viewModel.availableRooms.count {
+                            viewModel.clearRoomSelection()
+                        } else {
+                            viewModel.selectAllRooms()
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: viewModel.selectedRoomIds.count == viewModel.availableRooms.count ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 12))
+                            Text("Tất cả")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(viewModel.selectedRoomIds.count == viewModel.availableRooms.count ? .white : Color(UIColor.label))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(viewModel.selectedRoomIds.count == viewModel.availableRooms.count ? Color.blue : Color(UIColor.tertiarySystemFill))
+                        .cornerRadius(16)
+                    }
+                    
+                    ForEach(viewModel.availableRooms) { room in
+                        let isSelected = viewModel.selectedRoomIds.contains(room.index)
+                        Button(action: {
+                            viewModel.toggleRoomSelection(room.index)
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: isSelected ? "checkmark" : room.icon)
+                                    .font(.system(size: 11, weight: .bold))
+                                Text(room.name)
+                                    .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+                            }
+                            .foregroundColor(isSelected ? .white : Color(UIColor.label))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(isSelected ? Color(red: 0.09, green: 0.47, blue: 1.0) : Color(UIColor.tertiarySystemFill))
+                            .cornerRadius(16)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            
+            Text(viewModel.selectedRoomIds.isEmpty ? "Chạm để chọn các phòng cần dọn dẹp" : "Đã chọn \(viewModel.selectedRoomIds.count) phòng • Robot sẽ chỉ dọn các phòng này rồi về sạc")
+                .font(.system(size: 11))
+                .foregroundColor(Color(UIColor.secondaryLabel))
+        }
+        .padding(.vertical, 2)
+    }
+    
+    private var areaSelectionInfoBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "viewfinder")
+                .font(.system(size: 14))
+                .foregroundColor(Color.cyan)
+            Text("Vùng dọn: \(viewModel.customAreaBox.formattedAreaM2) • Kéo ô vuông trên bản đồ")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(Color(UIColor.label))
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(Color.cyan.opacity(0.12))
+        .cornerRadius(10)
+        .padding(.horizontal, 16)
     }
     
     @ViewBuilder
@@ -571,36 +703,26 @@ public struct RobotControlView: View {
                             .foregroundColor(viewModel.device.hasMopWashStation ? Color(red: 0.09, green: 0.47, blue: 1.0) : Color.purple)
                         Text(viewModel.device.hasMopWashStation ? (viewModel.device.hasAutoEmptyStation ? "Trạm sạc đa năng (OMNI)" : "Trạm sạc thông minh (Turbo)") : "Trạm hút rác tự động (Auto-Empty)")
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(Color(white: 0.15))
+                            .foregroundColor(Color(UIColor.label))
                     }
                     
                     Spacer()
                     
-                    if viewModel.state.dustbinEmptying {
-                        HStack(spacing: 4) {
-                            Circle().fill(Color.purple).frame(width: 6, height: 6)
-                            Text("Đang dọn rác...")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.purple)
+                    Button(action: {
+                        HapticManager.shared.light()
+                        viewModel.showStationSettingsSheet = true
+                    }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Tùy chỉnh")
+                                .font(.system(size: 11, weight: .bold))
                         }
-                    } else if viewModel.state.isWashingMop {
-                        HStack(spacing: 4) {
-                            Circle().fill(Color.blue).frame(width: 6, height: 6)
-                            Text("Đang giặt giẻ...")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.blue)
-                        }
-                    } else if viewModel.state.isAirDrying {
-                        HStack(spacing: 4) {
-                            Circle().fill(Color.orange).frame(width: 6, height: 6)
-                            Text("Đang sấy nóng...")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.orange)
-                        }
-                    } else {
-                        Text("Dock sẵn sàng")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color(white: 0.5))
+                        .foregroundColor(viewModel.device.hasMopWashStation ? Color(red: 0.09, green: 0.47, blue: 1.0) : Color.purple)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background((viewModel.device.hasMopWashStation ? Color.blue : Color.purple).opacity(0.12))
+                        .cornerRadius(8)
                     }
                 }
                 
@@ -608,6 +730,7 @@ public struct RobotControlView: View {
                     // Nút Dọn rác (Chỉ hiện khi robot có dock rác Auto-Empty)
                     if viewModel.device.hasAutoEmptyStation {
                         Button(action: {
+                            HapticManager.shared.medium()
                             viewModel.triggerStationAction(.emptyDustbin)
                         }) {
                             VStack(spacing: 4) {
@@ -631,6 +754,7 @@ public struct RobotControlView: View {
                     if viewModel.device.hasMopWashStation {
                         // Nút 1: Giặt giẻ thủ công
                         Button(action: {
+                            HapticManager.shared.medium()
                             viewModel.triggerStationAction(viewModel.state.isWashingMop ? .stopMopWash : .startMopWash)
                         }) {
                             VStack(spacing: 4) {
@@ -645,12 +769,13 @@ public struct RobotControlView: View {
                             .foregroundColor(viewModel.state.isWashingMop ? .white : Color(red: 0.09, green: 0.47, blue: 1.0))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
-                            .background(viewModel.state.isWashingMop ? Color.blue : Color(red: 0.91, green: 0.95, blue: 1.0))
+                            .background(viewModel.state.isWashingMop ? Color.blue : Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.12))
                             .cornerRadius(10)
                         }
                         
                         // Nút 2: Bắt đầu sấy khô giẻ khí nóng (Hot Air Drying)
                         Button(action: {
+                            HapticManager.shared.medium()
                             viewModel.triggerStationAction(viewModel.state.isAirDrying ? .stopAirDrying : .startAirDrying)
                         }) {
                             VStack(spacing: 4) {
@@ -658,7 +783,7 @@ public struct RobotControlView: View {
                                     .font(.system(size: 14))
                                 Text(viewModel.state.isAirDrying ? "Dừng sấy" : "Sấy khí nóng")
                                     .font(.system(size: 11, weight: .bold))
-                                Text(viewModel.state.isAirDrying ? "Đang sấy" : "Khí nóng 45°C")
+                                Text(viewModel.state.isAirDrying ? "Đang sấy" : "\(viewModel.state.airDryingHours)h nóng 45°C")
                                     .font(.system(size: 9))
                                     .opacity(0.8)
                             }
@@ -672,11 +797,11 @@ public struct RobotControlView: View {
                 }
             }
             .padding(12)
-            .background(Color(red: 0.97, green: 0.98, blue: 1.0))
+            .background(Color(UIColor.tertiarySystemGroupedBackground))
             .cornerRadius(14)
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke(viewModel.device.hasAutoEmptyStation ? Color.purple.opacity(0.2) : Color.blue.opacity(0.15), lineWidth: 1)
+                    .stroke(viewModel.device.hasAutoEmptyStation ? Color.purple.opacity(0.25) : Color.blue.opacity(0.2), lineWidth: 1)
             )
             
             Divider().padding(.vertical, 2)
@@ -1225,8 +1350,106 @@ public struct CleaningLogSheetView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(Color.white)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
         .cornerRadius(14)
         .shadow(color: Color.black.opacity(0.03), radius: 4, y: 1)
     }
 }
+
+// MARK: - View Khoanh Vùng Tương Tác Trên Bản Đồ (Area Clean Box Overlay)
+public struct AreaCleanBoxOverlayView: View {
+    @ObservedObject var viewModel: RobotControlViewModel
+    let containerSize: CGSize
+    let mapBounds: CGRect
+    
+    @State private var dragOffset: CGSize = .zero
+    
+    public init(viewModel: RobotControlViewModel, containerSize: CGSize, mapBounds: CGRect) {
+        self.viewModel = viewModel
+        self.containerSize = containerSize
+        self.mapBounds = mapBounds
+    }
+    
+    private func screenToSvg(_ pt: CGPoint) -> CGPoint {
+        guard mapBounds.width > 0 && mapBounds.height > 0 && containerSize.width > 0 && containerSize.height > 0 else {
+            return pt
+        }
+        let scale = min(containerSize.width / mapBounds.width, containerSize.height / mapBounds.height)
+        let displayedW = mapBounds.width * scale
+        let displayedH = mapBounds.height * scale
+        let offsetX = (containerSize.width - displayedW) / 2.0
+        let offsetY = (containerSize.height - displayedH) / 2.0
+        
+        let svgX = mapBounds.minX + (pt.x - offsetX) / scale
+        let svgY = mapBounds.minY + (pt.y - offsetY) / scale
+        return CGPoint(x: svgX, y: svgY)
+    }
+    
+    private func svgToScreen(_ pt: CGPoint) -> CGPoint {
+        guard mapBounds.width > 0 && mapBounds.height > 0 && containerSize.width > 0 && containerSize.height > 0 else {
+            return pt
+        }
+        let scale = min(containerSize.width / mapBounds.width, containerSize.height / mapBounds.height)
+        let displayedW = mapBounds.width * scale
+        let displayedH = mapBounds.height * scale
+        let offsetX = (containerSize.width - displayedW) / 2.0
+        let offsetY = (containerSize.height - displayedH) / 2.0
+        
+        let scrX = offsetX + (pt.x - mapBounds.minX) * scale
+        let scrY = offsetY + (pt.y - mapBounds.minY) * scale
+        return CGPoint(x: scrX, y: scrY)
+    }
+    
+    public var body: some View {
+        let p1 = svgToScreen(CGPoint(x: viewModel.customAreaBox.x1, y: viewModel.customAreaBox.y1))
+        let p2 = svgToScreen(CGPoint(x: viewModel.customAreaBox.x2, y: viewModel.customAreaBox.y2))
+        
+        let rectMinX = min(p1.x, p2.x) + dragOffset.width
+        let rectMinY = min(p1.y, p2.y) + dragOffset.height
+        let rectW = max(40, abs(p2.x - p1.x))
+        let rectH = max(40, abs(p2.y - p1.y))
+        
+        ZStack(alignment: .topLeading) {
+            // Khung chữ nhật khoanh vùng mờ
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.cyan.opacity(0.18))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.cyan, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                )
+                .frame(width: rectW, height: rectH)
+                .offset(x: rectMinX, y: rectMinY)
+                .gesture(
+                    DragGesture()
+                        .onChanged { val in
+                            dragOffset = val.translation
+                        }
+                        .onEnded { val in
+                            HapticManager.shared.light()
+                            let newP1 = CGPoint(x: p1.x + val.translation.width, y: p1.y + val.translation.height)
+                            let newP2 = CGPoint(x: p2.x + val.translation.width, y: p2.y + val.translation.height)
+                            let svg1 = screenToSvg(newP1)
+                            let svg2 = screenToSvg(newP2)
+                            viewModel.updateCustomAreaBox(x1: svg1.x, y1: svg1.y, x2: svg2.x, y2: svg2.y)
+                            dragOffset = .zero
+                        }
+                )
+            
+            // Badge hiển thị diện tích ngay trên góc hộp khoanh vùng
+            HStack(spacing: 4) {
+                Image(systemName: "viewfinder")
+                    .font(.system(size: 10, weight: .bold))
+                Text("Dọn: \(viewModel.customAreaBox.formattedAreaM2)")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.cyan)
+            .cornerRadius(6)
+            .shadow(radius: 4)
+            .offset(x: rectMinX, y: max(10, rectMinY - 26))
+        }
+    }
+}
+

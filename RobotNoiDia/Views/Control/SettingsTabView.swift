@@ -13,6 +13,7 @@ public struct SettingsTabView: View {
     @State private var showVideoManagerSheet: Bool = false
     @State private var showAboutRobotSheet: Bool = false
     @State private var showAboutStationSheet: Bool = false
+    @State private var showStationSettingsSheet: Bool = false
     
     public init(viewModel: RobotControlViewModel) {
         self.viewModel = viewModel
@@ -21,7 +22,7 @@ public struct SettingsTabView: View {
     public var body: some View {
         NavigationView {
             ZStack(alignment: .bottom) {
-                Color(red: 0.96, green: 0.97, blue: 0.99)
+                Color(UIColor.systemGroupedBackground)
                     .ignoresSafeArea()
                 
                 ScrollView {
@@ -29,7 +30,10 @@ public struct SettingsTabView: View {
                         // Nhóm 1: Trợ lý giọng nói YIKO (Chỉ hiện khi robot hỗ trợ)
                         if viewModel.device.hasYiko {
                             VStack(spacing: 0) {
-                                Button(action: { showYikoSheet = true }) {
+                                Button(action: { 
+                                    HapticManager.shared.light()
+                                    showYikoSheet = true 
+                                }) {
                                     settingItemRow(
                                         icon: "mic.fill",
                                         iconColor: Color(red: 0.09, green: 0.47, blue: 1.0),
@@ -38,7 +42,7 @@ public struct SettingsTabView: View {
                                     )
                                 }
                             }
-                            .background(Color.white)
+                            .background(Color(UIColor.secondarySystemGroupedBackground))
                             .cornerRadius(14)
                             .padding(.horizontal, 16)
                         }
@@ -79,7 +83,7 @@ public struct SettingsTabView: View {
                                 )
                             }
                         }
-                        .background(Color.white)
+                        .background(Color(UIColor.secondarySystemGroupedBackground))
                         .cornerRadius(14)
                         .padding(.horizontal, 16)
                         
@@ -194,7 +198,7 @@ public struct SettingsTabView: View {
                             .padding(.horizontal, 16)
                             .padding(.vertical, 14)
                         }
-                        .background(Color.white)
+                        .background(Color(UIColor.secondarySystemGroupedBackground))
                         .cornerRadius(14)
                         .padding(.horizontal, 16)
                         
@@ -241,13 +245,16 @@ public struct SettingsTabView: View {
                                 )
                             }
                         }
-                        .background(Color.white)
+                        .background(Color(UIColor.secondarySystemGroupedBackground))
                         .cornerRadius(14)
                         .padding(.horizontal, 16)
                         
                         // Nhóm 4: Thông tin thiết bị & Trạm
                         VStack(spacing: 0) {
-                            Button(action: { showAboutRobotSheet = true }) {
+                            Button(action: { 
+                                HapticManager.shared.light()
+                                showAboutRobotSheet = true 
+                            }) {
                                 settingItemRow(
                                     icon: "info.circle.fill",
                                     iconColor: Color.blue,
@@ -259,7 +266,24 @@ public struct SettingsTabView: View {
                             if viewModel.device.hasSmartStation {
                                 Divider().padding(.leading, 50)
                                 
-                                Button(action: { showAboutStationSheet = true }) {
+                                Button(action: { 
+                                    HapticManager.shared.light()
+                                    showStationSettingsSheet = true 
+                                }) {
+                                    settingItemRow(
+                                        icon: "slider.horizontal.3",
+                                        iconColor: viewModel.device.hasMopWashStation ? Color.blue : Color.purple,
+                                        title: "Cài đặt Trạm sạc nâng cao",
+                                        detail: viewModel.device.hasMopWashStation ? "Tần suất giặt giẻ & sấy nóng 45°C" : "Tần suất tự động gom rác vào dock"
+                                    )
+                                }
+                                
+                                Divider().padding(.leading, 50)
+                                
+                                Button(action: { 
+                                    HapticManager.shared.light()
+                                    showAboutStationSheet = true 
+                                }) {
                                     settingItemRow(
                                         icon: viewModel.device.hasMopWashStation ? "powerplug.fill" : "trash.circle.fill",
                                         iconColor: viewModel.device.hasMopWashStation ? Color.green : Color.purple,
@@ -269,7 +293,7 @@ public struct SettingsTabView: View {
                                 }
                             }
                         }
-                        .background(Color.white)
+                        .background(Color(UIColor.secondarySystemGroupedBackground))
                         .cornerRadius(14)
                         .padding(.horizontal, 16)
                         
@@ -334,6 +358,9 @@ public struct SettingsTabView: View {
             }
             .sheet(isPresented: $showScheduleSheet) {
                 ScheduleView(viewModel: viewModel)
+            }
+            .sheet(isPresented: $showStationSettingsSheet) {
+                StationSettingsSheetView(viewModel: viewModel)
             }
             .alert("Cài đặt thông minh AIVI", isPresented: $showAiviSheet) {
                 Button("Đóng", role: .cancel) {}

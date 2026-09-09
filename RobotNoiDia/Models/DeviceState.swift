@@ -75,6 +75,10 @@ public struct DeviceState: Codable {
     public var isAirDrying: Bool
     public var airDryingHours: Int
     public var dustbinEmptying: Bool
+    public var dustbinFull: Bool
+    public var stationWashFrequency: String // "6m2", "10m2", "15m2", "room"
+    public var autoEmptyFrequency: Int // 1, 2, 3, 0 (thủ công)
+    public var stationErrorCode: Int
     
     // Bản đồ nâng cao: Tường ảo & Vùng cấm
     public var virtualWalls: [VirtualWall]
@@ -119,6 +123,10 @@ public struct DeviceState: Codable {
             isAirDrying: false,
             airDryingHours: 2,
             dustbinEmptying: false,
+            dustbinFull: false,
+            stationWashFrequency: "10m2",
+            autoEmptyFrequency: 1,
+            stationErrorCode: 0,
             virtualWalls: [],
             restrictedZones: [],
             schedules: [
@@ -137,5 +145,50 @@ public struct DeviceState: Codable {
         )
     }
 }
+
+// MARK: - Model Dọn Dẹp Theo Phòng (Room Clean)
+public struct CleaningRoom: Identifiable, Codable, Hashable {
+    public var id: String { "\(index)" }
+    public let index: Int
+    public var name: String
+    public var icon: String
+    public var colorHex: String
+    
+    public init(index: Int, name: String, icon: String, colorHex: String = "#3B82F6") {
+        self.index = index
+        self.name = name
+        self.icon = icon
+        self.colorHex = colorHex
+    }
+}
+
+// MARK: - Model Khoanh Vùng Tùy Chỉnh (Area Clean Box)
+public struct CustomAreaBox: Codable, Hashable {
+    public var x1: Double
+    public var y1: Double
+    public var x2: Double
+    public var y2: Double
+    
+    public init(x1: Double, y1: Double, x2: Double, y2: Double) {
+        self.x1 = x1
+        self.y1 = y1
+        self.x2 = x2
+        self.y2 = y2
+    }
+    
+    public var minX: Double { min(x1, x2) }
+    public var maxX: Double { max(x1, x2) }
+    public var minY: Double { min(y1, y2) }
+    public var maxY: Double { max(y1, y2) }
+    public var width: Double { abs(x2 - x1) }
+    public var height: Double { abs(y2 - y1) }
+    
+    public var formattedAreaM2: String {
+        // Quy đổi tọa độ viewBox sang m² ước tính (mỗi đơn vị ~ 0.1m)
+        let area = (width * 0.1) * (height * 0.1)
+        return String(format: "%.1f m²", max(1.0, area))
+    }
+}
+
 
 

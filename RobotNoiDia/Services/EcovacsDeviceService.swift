@@ -351,6 +351,36 @@ public final class EcovacsDeviceService {
         _ = try await executeCommand(device: device, cmdName: "clean", payloadArgs: args)
     }
     
+    /// Dọn dẹp theo phòng đã chọn (Spot / Room Cleaning)
+    public func cleanRooms(device: DeviceModel, roomIds: [Int]) async throws {
+        guard !roomIds.isEmpty else {
+            try await clean(device: device, action: .start)
+            return
+        }
+        let idsStr = roomIds.map { String($0) }.joined(separator: ",")
+        let args: [String: Any] = [
+            "act": "start",
+            "type": "spot",
+            "content": idsStr
+        ]
+        _ = try await executeCommand(device: device, cmdName: "clean", payloadArgs: args)
+    }
+    
+    /// Dọn dẹp theo ô khoanh vùng tự do trên bản đồ (Area Clean Box)
+    public func cleanCustomArea(device: DeviceModel, x1: Double, y1: Double, x2: Double, y2: Double) async throws {
+        let minX = min(x1, x2)
+        let minY = min(y1, y2)
+        let maxX = max(x1, x2)
+        let maxY = max(y1, y2)
+        let coordsStr = String(format: "%.1f,%.1f,%.1f,%.1f", minX, minY, maxX, maxY)
+        let args: [String: Any] = [
+            "act": "start",
+            "type": "custom",
+            "content": coordsStr
+        ]
+        _ = try await executeCommand(device: device, cmdName: "clean", payloadArgs: args)
+    }
+    
     public func charge(device: DeviceModel) async throws {
         _ = try await executeCommand(device: device, cmdName: "charge", payloadArgs: ["act": "go"])
     }
@@ -953,6 +983,52 @@ public final class EcovacsDeviceService {
         let drying = (body["airDrying"] as? Int) == 1 || (body["airDryingState"] as? Int) == 1
         let dustFull = (body["dustbinState"] as? Int) == 1
         return (washing, drying, dustFull)
+    }
+    
+    // Tùy chỉnh trạm sạc Turbo / Omni: Tần suất giặt giẻ (6m2, 10m2, 15m2, room)
+    public func setWashFrequency(device: DeviceModel, frequency: String) async throws {
+        let key = "station_wash_freq_\(device.did)"
+        UserDefaults.standard.set(frequency, forKey: key)
+        let interval: Int
+        switch frequency {
+        case "6m2": interval = 6
+        case "15m2": interval = 15
+        case "room": interval = 0
+        default: interval = 10
+        }
+        _ = try? await executeCommand(device: device, cmdName: "setCleanPreference", payloadArgs: ["washInterval": interval])
+        _ = try? await executeCommand(device: device, cmdName: "setWashFrequency", payloadArgs: ["frequency": frequency])
+    }
+    
+    // Tùy chỉnh trạm sạc Turbo / Omni: Thời gian sấy nóng giẻ (2h, 3h, 4h)
+    public func setAirDryingDuration(device: DeviceModel, hours: Int) async throws {
+        let key = "station_air_drying_hours_\(device.did)"
+        UserDefaults.standard.set(hours, forKey: key)
+        _ = try? await executeCommand(device: device, cmdName: "setAirDrying", payloadArgs: ["act": 1, "time": hours])
+        _ = try? await executeCommand(device: device, cmdName: "stationAction", payloadArgs: ["act": 1, "type": 3, "time": hours])
+    }
+    
+    // Tùy chỉnh dock rác Auto-Empty: Tần suất tự động dọn rác (1, 2, 3, 0=thủ công)
+    public func setAutoEmptyFrequency(device: DeviceModel, frequency: Int) async throws {
+        let key = "station_auto_empty_freq_\(device.did)"
+        UserDefaults.standard.set(frequency, forKey: key)
+        let enable = frequency > 0 ? 1 : 0
+        _ = try? await executeCommand(device: device, cmdName: "setAutoEmpty", payloadArgs: [
+            "enable": enable,
+            "frequency": frequency
+        ])
+    }
+    
+    public func getStationPreferences(device: DeviceModel) -> (washFreq: String, dryingHours: Int, autoEmptyFreq: Int) {
+        let washKey = "station_wash_freq_\(device.did)"
+        let dryKey = "station_air_drying_hours_\(device.did)"
+        let emptyKey = "station_auto_empty_freq_\(device.did)"
+        
+        let washFreq = UserDefaults.standard.string(forKey: washKey) ?? "10m2"
+        let dryHours = UserDefaults.standard.integer(forKey: dryKey) == 0 ? 2 : UserDefaults.standard.integer(forKey: dryKey)
+        let emptyFreq = UserDefaults.standard.object(forKey: emptyKey) == nil ? 1 : UserDefaults.standard.integer(forKey: emptyKey)
+        
+        return (washFreq, dryHours, emptyFreq)
     }
     
     // MARK: - 11. Trợ Lý Giọng Nói YIKO

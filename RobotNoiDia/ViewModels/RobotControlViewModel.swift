@@ -38,7 +38,11 @@ public final class RobotControlViewModel: ObservableObject {
     @Published public var selectedTab: ControlTab = .controls
     
     // Thuộc tính điều khiển chi tiết theo Hình 2, 3, 4
-    @Published public var cleanModeTab: String = "auto" // "area", "auto", "custom"
+    @Published public var cleanModeTab: String = "auto" // "auto", "area", "custom"
+    @Published public var availableRooms: [CleaningRoom] = []
+    @Published public var selectedRoomIds: Set<Int> = []
+    @Published public var customAreaBox: CustomAreaBox = CustomAreaBox(x1: -10, y1: -10, x2: 10, y2: 10)
+    
     @Published public var cleaningPreference: String = "standard" // "standard", "customize"
     @Published public var cleanTimes: Int = 1 // 1 hoặc 2 lần
     @Published public var moppingMode: String = "standard" // "standard" hoặc "deep"
@@ -46,6 +50,7 @@ public final class RobotControlViewModel: ObservableObject {
     @Published public var doNotDisturb: Bool = false
     @Published public var showMoreSettings: Bool = false
     @Published public var showScheduleSheet: Bool = false
+    @Published public var showStationSettingsSheet: Bool = false
     @Published public var isEditingBoundaries: Bool = false
     
     @Published public var isExecutingCommand: Bool = false
@@ -72,6 +77,15 @@ public final class RobotControlViewModel: ObservableObject {
             self.mapBounds = CGRect(x: -212, y: -17, width: 271, height: 96)
             self.mapCoverageM2 = 34
             self.mapId = "1582797248"
+            
+            self.availableRooms = [
+                CleaningRoom(index: 0, name: "Phòng khách", icon: "sofa.fill", colorHex: "#3B82F6"),
+                CleaningRoom(index: 1, name: "Phòng ngủ", icon: "bed.double.fill", colorHex: "#8B5CF6"),
+                CleaningRoom(index: 2, name: "Bếp & Ăn", icon: "fork.knife", colorHex: "#EC4899"),
+                CleaningRoom(index: 3, name: "Làm việc", icon: "desktopcomputer", colorHex: "#10B981"),
+                CleaningRoom(index: 4, name: "Ban công", icon: "sun.max.fill", colorHex: "#F59E0B")
+            ]
+            self.customAreaBox = CustomAreaBox(x1: -20, y1: -25, x2: 30, y2: 20)
         } else {
             self.state.dockX = 26.36
             self.state.dockY = -55.24
@@ -80,6 +94,15 @@ public final class RobotControlViewModel: ObservableObject {
             self.mapBounds = CGRect(x: -153, y: -123, width: 186, height: 151)
             self.mapCoverageM2 = 48
             self.mapId = "1626251293"
+            
+            self.availableRooms = [
+                CleaningRoom(index: 0, name: "Phòng khách", icon: "sofa.fill", colorHex: "#3B82F6"),
+                CleaningRoom(index: 1, name: "Phòng ngủ chính", icon: "bed.double.fill", colorHex: "#8B5CF6"),
+                CleaningRoom(index: 2, name: "Bếp", icon: "fork.knife", colorHex: "#EC4899"),
+                CleaningRoom(index: 3, name: "Phòng ngủ nhỏ", icon: "bed.double", colorHex: "#10B981"),
+                CleaningRoom(index: 4, name: "Hành lang", icon: "door.left.hand.open", colorHex: "#F59E0B")
+            ]
+            self.customAreaBox = CustomAreaBox(x1: 10, y1: -70, x2: 45, y2: -35)
         }
         // Nạp ngay bản đồ SVG cơ sở thực tế lập tức khi khởi tạo ViewModel
         let instantMap = deviceService.getInstantSvgMap(device: device)
@@ -87,6 +110,12 @@ public final class RobotControlViewModel: ObservableObject {
         self.mapBounds = instantMap.viewBox
         self.mapId = instantMap.mid
         self.mapCoverageM2 = instantMap.coverageM2
+        
+        // Nạp tùy chọn cấu hình trạm sạc
+        let stationPrefs = deviceService.getStationPreferences(device: device)
+        self.state.stationWashFrequency = stationPrefs.washFreq
+        self.state.airDryingHours = stationPrefs.dryingHours
+        self.state.autoEmptyFrequency = stationPrefs.autoEmptyFreq
         
         // Nạp ngay thống kê & nhật ký dọn dẹp thực tế từ bộ nhớ máy (zero delay khi mở sheet)
         let statsKey = "cleaning_stats_\(device.did)"
@@ -301,8 +330,53 @@ public final class RobotControlViewModel: ObservableObject {
     }
 
     
-    // MARK: - Remote Actions
+    // MARK: - Remote Actions & Mode Clean
+    public func triggerStartClean() {
+        HapticManager.shared.medium()
+        let isCleaning = state.cleanState == "clean"
+        if isCleaning {
+            triggerClean(action: .pause)
+            return
+        }
+        
+        isExecutingCommand = true
+        Task {
+            do {
+                switch cleanModeTab {
+                case "area":
+                    let ids = Array(selectedRoomIds)
+                    if ids.isEmpty {
+                        showToastNotification("Vui lòng chọn ít nhất 1 phòng để dọn dẹp")
+                        self.isExecutingCommand = false
+                        return
+                    }
+                    try await deviceService.cleanRooms(device: device, roomIds: ids)
+                    let names = ids.compactMap { id in availableRooms.first(where: { $0.index == id })?.name }.joined(separator: ", ")
+                    self.showToastNotification("Bắt đầu dọn: \(names)")
+                case "custom":
+                    try await deviceService.cleanCustomArea(
+                        device: device,
+                        x1: customAreaBox.x1,
+                        y1: customAreaBox.y1,
+                        x2: customAreaBox.x2,
+                        y2: customAreaBox.y2
+                    )
+                    self.showToastNotification("Bắt đầu dọn khoanh vùng (\(customAreaBox.formattedAreaM2))")
+                default:
+                    try await deviceService.clean(device: device, action: .start)
+                    self.showToastNotification("Bắt đầu dọn dẹp toàn bộ nhà")
+                }
+                await self.refreshState()
+            } catch {
+                HapticManager.shared.error()
+                self.showToastNotification("Lỗi: \(error.localizedDescription)")
+            }
+            self.isExecutingCommand = false
+        }
+    }
+    
     public func triggerClean(action: CleanAction) {
+        HapticManager.shared.medium()
         isExecutingCommand = true
         Task {
             do {
@@ -310,13 +384,82 @@ public final class RobotControlViewModel: ObservableObject {
                 self.showToastNotification("Đã gửi lệnh: \(action.title)")
                 await self.refreshState()
             } catch {
+                HapticManager.shared.error()
                 self.showToastNotification("Lỗi: \(error.localizedDescription)")
             }
             self.isExecutingCommand = false
         }
     }
     
+    // MARK: - Quản lý Chọn Phòng (Room Selection)
+    public func toggleRoomSelection(_ index: Int) {
+        HapticManager.shared.selection()
+        if selectedRoomIds.contains(index) {
+            selectedRoomIds.remove(index)
+        } else {
+            selectedRoomIds.insert(index)
+        }
+    }
+    
+    public func selectAllRooms() {
+        HapticManager.shared.light()
+        selectedRoomIds = Set(availableRooms.map { $0.index })
+    }
+    
+    public func clearRoomSelection() {
+        HapticManager.shared.light()
+        selectedRoomIds.removeAll()
+    }
+    
+    public func updateCustomAreaBox(x1: Double, y1: Double, x2: Double, y2: Double) {
+        self.customAreaBox = CustomAreaBox(x1: x1, y1: y1, x2: x2, y2: y2)
+    }
+    
+    // MARK: - Quản lý Tùy chỉnh Trạm Sạc (Turbo / Auto-Empty)
+    public func updateWashFrequency(_ freq: String) {
+        HapticManager.shared.light()
+        state.stationWashFrequency = freq
+        Task {
+            try? await deviceService.setWashFrequency(device: device, frequency: freq)
+            let desc: String
+            switch freq {
+            case "6m2": desc = "Sau mỗi 6 m²"
+            case "15m2": desc = "Sau mỗi 15 m²"
+            case "room": desc = "Sau mỗi phòng"
+            default: desc = "Sau mỗi 10 m²"
+            }
+            self.showToastNotification("Tần suất giặt giẻ: \(desc)")
+        }
+    }
+    
+    public func updateAirDryingHours(_ hours: Int) {
+        HapticManager.shared.light()
+        state.airDryingHours = hours
+        Task {
+            try? await deviceService.setAirDryingDuration(device: device, hours: hours)
+            self.showToastNotification("Thời gian sấy nóng: \(hours) giờ")
+        }
+    }
+    
+    public func updateAutoEmptyFrequency(_ freq: Int) {
+        HapticManager.shared.light()
+        state.autoEmptyFrequency = freq
+        Task {
+            try? await deviceService.setAutoEmptyFrequency(device: device, frequency: freq)
+            let desc: String
+            switch freq {
+            case 0: desc = "Chỉ gom thủ công"
+            case 1: desc = "Sau mỗi lần dọn"
+            case 2: desc = "Sau mỗi 2 lần dọn"
+            case 3: desc = "Sau mỗi 3 lần dọn"
+            default: desc = "\(freq) lần"
+            }
+            self.showToastNotification("Tần suất dọn rác: \(desc)")
+        }
+    }
+    
     public func triggerCharge() {
+        HapticManager.shared.medium()
         isExecutingCommand = true
         Task {
             do {
@@ -324,6 +467,7 @@ public final class RobotControlViewModel: ObservableObject {
                 self.showToastNotification("Robot đang quay về trạm sạc...")
                 await self.refreshState()
             } catch {
+                HapticManager.shared.error()
                 self.showToastNotification("Lỗi: \(error.localizedDescription)")
             }
             self.isExecutingCommand = false
@@ -331,22 +475,26 @@ public final class RobotControlViewModel: ObservableObject {
     }
     
     public func triggerPlaySound() {
+        HapticManager.shared.light()
         Task {
             do {
                 try await deviceService.playSound(device: device)
                 self.showToastNotification("Robot đang phát âm thanh định vị...")
             } catch {
+                HapticManager.shared.error()
                 self.showToastNotification("Lỗi: \(error.localizedDescription)")
             }
         }
     }
     
     public func triggerRelocate() {
+        HapticManager.shared.light()
         Task {
             do {
                 try await deviceService.relocate(device: device)
                 self.showToastNotification("Đang tái định vị robot trên bản đồ...")
             } catch {
+                HapticManager.shared.error()
                 self.showToastNotification("Lỗi: \(error.localizedDescription)")
             }
         }
@@ -453,6 +601,7 @@ public final class RobotControlViewModel: ObservableObject {
     public func refreshConsumables() async {
         let data = await deviceService.getConsumables(device: device)
         self.consumables = data
+        NotificationManager.shared.notifyConsumablesChange(device: device, consumables: data)
     }
     
     public func resetConsumable(type: ConsumableType) {
@@ -548,6 +697,7 @@ public final class RobotControlViewModel: ObservableObject {
     
     // MARK: - Điều Khiển Trạm Sạc Thông Minh (Station Controls)
     public func triggerStationAction(_ action: StationActionType) {
+        HapticManager.shared.medium()
         isExecutingCommand = true
         Task {
             do {
@@ -569,6 +719,7 @@ public final class RobotControlViewModel: ObservableObject {
                     self.state.isAirDrying = false
                 }
             } catch {
+                HapticManager.shared.error()
                 self.showToastNotification("Lỗi trạm sạc: \(error.localizedDescription)")
             }
             self.isExecutingCommand = false
@@ -579,6 +730,8 @@ public final class RobotControlViewModel: ObservableObject {
         let (washing, drying, dustFull) = await deviceService.getStationState(device: device)
         self.state.isWashingMop = washing
         self.state.isAirDrying = drying
+        self.state.dustbinFull = dustFull
+        NotificationManager.shared.notifyStateChange(device: device, state: self.state)
     }
     
     // MARK: - Lịch Hẹn Giờ Dọn Dẹp (Cleaning Schedule)
