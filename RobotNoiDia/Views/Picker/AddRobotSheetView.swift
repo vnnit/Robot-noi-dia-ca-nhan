@@ -4,13 +4,14 @@ import SwiftUI
 public struct AddRobotSheetView: View {
     @ObservedObject var viewModel: RobotPickerViewModel
     @StateObject private var provService = EcovacsProvisioningService.shared
+    @StateObject private var wifiDetector = WifiDetector.shared
     @Environment(\.dismiss) private var dismiss
     
     @State private var selectedTab: Int = 0 // 0: Đồng Bộ Cloud, 1: Kích Hoạt Wi-Fi Mới
     
-    // Wi-Fi credentials for Provisioning
+    // Wi-Fi credentials for Provisioning - Tự động nhớ cả SSID & Mật khẩu
     @AppStorage("saved_provision_ssid") private var wifiSSID: String = ""
-    @State private var wifiPassword: String = ""
+    @AppStorage("saved_provision_pwd") private var wifiPassword: String = ""
     @State private var isPasswordVisible: Bool = false
     
     // Cloud Sync feedback
@@ -28,15 +29,8 @@ public struct AddRobotSheetView: View {
                     .ignoresSafeArea()
                 
                 VStack(spacing: 0) {
-                    // 1. Segmented Control Switcher
-                    Picker("Chế độ", selection: $selectedTab) {
-                        Text("Đồng Bộ Cloud").tag(0)
-                        Text("Cài Đặt Wi-Fi Mới").tag(1)
-                    }
-                    .pickerStyle(SegmentedPickerStyle())
-                    .padding(.horizontal, 16)
-                    .padding(.top, 14)
-                    .padding(.bottom, 10)
+                    // 1. Tab Bar chuyển chế độ có độ tương phản cao
+                    tabSelector
                     
                     ScrollView {
                         VStack(spacing: 16) {
@@ -61,12 +55,66 @@ public struct AddRobotSheetView: View {
                     }) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 20))
-                            .foregroundColor(Color.gray.opacity(0.6))
+                            .foregroundColor(Color.gray.opacity(0.7))
                     }
                 }
             }
         }
+        .preferredColorScheme(.light)
         .presentationDetents([.fraction(0.92), .large])
+        .onAppear {
+            autoDetectWifi()
+        }
+        .onChange(of: selectedTab) { newTab in
+            if newTab == 1 {
+                autoDetectWifi()
+            }
+        }
+    }
+    
+    private func autoDetectWifi() {
+        wifiDetector.scanCurrentWifi { foundSSID in
+            if self.wifiSSID.isEmpty {
+                self.wifiSSID = foundSSID
+            }
+        }
+    }
+    
+    // MARK: - Tab Selector Bar
+    private var tabSelector: some View {
+        HStack(spacing: 0) {
+            Button(action: {
+                HapticManager.shared.light()
+                withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 0 }
+            }) {
+                Text("Đồng Bộ Cloud")
+                    .font(.system(size: 13, weight: selectedTab == 0 ? .bold : .medium))
+                    .foregroundColor(selectedTab == 0 ? .white : Color(red: 0.3, green: 0.3, blue: 0.35))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 36)
+                    .background(selectedTab == 0 ? Color(red: 0.09, green: 0.47, blue: 1.0) : Color.clear)
+                    .cornerRadius(10)
+            }
+            
+            Button(action: {
+                HapticManager.shared.light()
+                withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 1 }
+            }) {
+                Text("Cài Đặt Wi-Fi Mới")
+                    .font(.system(size: 13, weight: selectedTab == 1 ? .bold : .medium))
+                    .foregroundColor(selectedTab == 1 ? .white : Color(red: 0.3, green: 0.3, blue: 0.35))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 36)
+                    .background(selectedTab == 1 ? Color(red: 0.09, green: 0.47, blue: 1.0) : Color.clear)
+                    .cornerRadius(10)
+            }
+        }
+        .padding(4)
+        .background(Color(white: 0.90))
+        .cornerRadius(14)
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
     }
     
     // MARK: - Tab 1: Đồng Bộ Cloud (Bypass Geofencing)
@@ -90,7 +138,7 @@ public struct AddRobotSheetView: View {
                 
                 Text("Tự động quét tài khoản Ecovacs của bạn để phát hiện robot mới đã được nạp Wi-Fi, nạp cấu hình và điều khiển ngay lập tức mà không bị hạn chế vùng (Bypass geofencing nội địa Trung Quốc).")
                     .font(.system(size: 13))
-                    .foregroundColor(.gray)
+                    .foregroundColor(Color(white: 0.4))
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
                     .padding(.horizontal, 10)
@@ -118,12 +166,17 @@ public struct AddRobotSheetView: View {
                 HapticManager.shared.medium()
                 Task {
                     let res = await viewModel.syncCloudRobots()
-                    syncStatusMessage = res.message
-                    isSyncSuccess = res.success
-                    if res.success {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                    if res.isSuccess {
+                        HapticManager.shared.success()
+                        syncStatusMessage = "Đồng bộ thành công! Tìm thấy \(res.deviceCount) robot."
+                        isSyncSuccess = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                             dismiss()
                         }
+                    } else {
+                        HapticManager.shared.error()
+                        syncStatusMessage = res.message
+                        isSyncSuccess = false
                     }
                 }
             }) {
@@ -170,7 +223,7 @@ public struct AddRobotSheetView: View {
                         .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
                     Text("Dùng chuẩn ghép đôi SoftAP & AliGetSCSync gốc của Ecovacs")
                         .font(.system(size: 12))
-                        .foregroundColor(.gray)
+                        .foregroundColor(Color(white: 0.45))
                 }
                 Spacer()
             }
@@ -179,62 +232,121 @@ public struct AddRobotSheetView: View {
             .cornerRadius(14)
             .shadow(color: Color.black.opacity(0.03), radius: 4, y: 1)
             
-            // Card 2: Nhập thông tin Wi-Fi nhà
+            // Card 2: Nhập thông tin Wi-Fi nhà bạn (Quét tự động & cho phép chỉnh sửa)
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("1. Thông tin Wi-Fi nhà bạn (2.4GHz)")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
+                    
                     Spacer()
-                    Text("Chỉ dùng 2.4GHz")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.orange)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.orange.opacity(0.1))
-                        .cornerRadius(4)
+                    
+                    // Nút quét lại Wi-Fi
+                    Button(action: {
+                        HapticManager.shared.light()
+                        wifiDetector.scanCurrentWifi { foundSSID in
+                            self.wifiSSID = foundSSID
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            if wifiDetector.isDetecting {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: Color(red: 0.09, green: 0.47, blue: 1.0)))
+                                    .scaleEffect(0.65)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 10, weight: .bold))
+                            }
+                            Text("Quét Wi-Fi")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(6)
+                    }
+                }
+                
+                // Cảnh báo nếu iPhone đang nối vào Wi-Fi Robot thay vì Wi-Fi nhà
+                if wifiDetector.isRobotAP {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(.orange)
+                            .padding(.top, 2)
+                        
+                        Text("iPhone đang nối vào Wi-Fi Robot (\(wifiDetector.currentSSID)). Hãy điền hoặc giữ nguyên tên Wi-Fi nhà bạn bên dưới để Robot kết nối vào.")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Color(red: 0.4, green: 0.25, blue: 0.0))
+                            .lineSpacing(2)
+                    }
+                    .padding(10)
+                    .background(Color.orange.opacity(0.12))
+                    .cornerRadius(8)
                 }
                 
                 VStack(spacing: 10) {
+                    // Tên Wi-Fi (SSID) - Tự động điền & Có thể chỉnh sửa tự do
                     HStack(spacing: 10) {
                         Image(systemName: "wifi")
-                            .foregroundColor(.gray)
+                            .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
                             .frame(width: 20)
+                        
                         TextField("Tên Wi-Fi nhà (SSID)", text: $wifiSSID)
-                            .font(.system(size: 14))
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.black)
                             .autocapitalization(.none)
                             .disableAutocorrection(true)
+                        
+                        if !wifiSSID.isEmpty {
+                            Button(action: {
+                                wifiSSID = ""
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 15))
+                                    .foregroundColor(Color.gray.opacity(0.7))
+                            }
+                        }
                     }
                     .padding(12)
                     .background(Color(white: 0.96))
                     .cornerRadius(10)
                     
+                    // Mật khẩu Wi-Fi - Tự động ghi nhớ vĩnh viễn trên máy
                     HStack(spacing: 10) {
                         Image(systemName: "lock.fill")
                             .foregroundColor(.gray)
                             .frame(width: 20)
                         
                         if isPasswordVisible {
-                            TextField("Mật khẩu Wi-Fi", text: $wifiPassword)
+                            TextField("Mật khẩu Wi-Fi (để trống nếu không có)", text: $wifiPassword)
                                 .font(.system(size: 14))
+                                .foregroundColor(.black)
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
                         } else {
                             SecureField("Mật khẩu Wi-Fi (để trống nếu không có)", text: $wifiPassword)
                                 .font(.system(size: 14))
+                                .foregroundColor(.black)
                         }
                         
                         Button(action: {
                             isPasswordVisible.toggle()
                         }) {
                             Image(systemName: isPasswordVisible ? "eye.slash.fill" : "eye.fill")
-                                .foregroundColor(.gray)
+                                .foregroundColor(Color.gray.opacity(0.8))
                         }
                     }
                     .padding(12)
                     .background(Color(white: 0.96))
                     .cornerRadius(10)
                 }
+                
+                Text("Lưu ý: Robot Ecovacs chỉ hỗ trợ sóng 2.4GHz. Bạn có thể sửa trực tiếp tên Wi-Fi ở trên nếu muốn dùng mạng khác.")
+                    .font(.system(size: 11))
+                    .foregroundColor(Color.gray)
+                    .lineSpacing(2)
             }
             .padding(14)
             .background(Color.white)

@@ -17,11 +17,13 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.1.36</string>
+    <string>1.1.37</string>
     <key>CFBundleVersion</key>
-    <string>39</string>
+    <string>40</string>
     <key>UIUserInterfaceStyle</key>
     <string>Light</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Ứng dụng cần quyền vị trí để tự động quét tên mạng Wi-Fi (SSID) nhà bạn khi cấu hình kết nối cho Robot.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Ứng dụng cần quyền quét mạng nội bộ để phát hiện và kết nối trực tiếp với robot Ecovacs trong mạng Wi-Fi gia đình.</string>
     <key>NSBonjourServices</key>

@@ -43,6 +43,7 @@
 		A10035 /* AddRobotSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10035 /* AddRobotSheetView.swift */; };
 		A10036 /* LocalNetworkScannerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10036 /* LocalNetworkScannerService.swift */; };
 		A10037 /* EcovacsProvisioningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10037 /* EcovacsProvisioningService.swift */; };
+		A10038 /* WifiDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10038 /* WifiDetector.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -84,6 +85,7 @@
 		B10035 /* AddRobotSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Picker/AddRobotSheetView.swift"; sourceTree = "<group>"; };
 		B10036 /* LocalNetworkScannerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNetworkScannerService.swift; sourceTree = "<group>"; };
 		B10037 /* EcovacsProvisioningService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EcovacsProvisioningService.swift; sourceTree = "<group>"; };
+		B10038 /* WifiDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiDetector.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -168,6 +170,7 @@
 				B10028 /* NotificationManager.swift */,
 				B10036 /* LocalNetworkScannerService.swift */,
 				B10037 /* EcovacsProvisioningService.swift */,
+				B10038 /* WifiDetector.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -317,6 +320,7 @@
 				A10035 /* AddRobotSheetView.swift in Sources */,
 				A10036 /* LocalNetworkScannerService.swift in Sources */,
 				A10037 /* EcovacsProvisioningService.swift in Sources */,
+				A10038 /* WifiDetector.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -393,7 +397,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 40;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -403,7 +407,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.36;
+				MARKETING_VERSION = 1.1.37;
 				PRODUCT_BUNDLE_IDENTIFIER = com.robot.noidia;
 				PRODUCT_NAME = RobotNoiDia;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -418,7 +422,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 39;
+				CURRENT_PROJECT_VERSION = 40;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -428,7 +432,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.36;
+				MARKETING_VERSION = 1.1.37;
 				PRODUCT_BUNDLE_IDENTIFIER = com.robot.noidia;
 				PRODUCT_NAME = RobotNoiDia;
 				SWIFT_EMIT_LOC_STRINGS = YES;
