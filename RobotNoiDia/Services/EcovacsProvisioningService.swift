@@ -1,6 +1,33 @@
 import Foundation
 import Network
 
+/// Helper điều phối luồng hoàn thành của Continuation an toàn đa luồng (Thread-safe Continuation Gate)
+private final class ContinuationGate<T>: @unchecked Sendable {
+    private var didResume = false
+    private let lock = NSLock()
+    private let continuation: CheckedContinuation<T, Error>
+    
+    init(_ continuation: CheckedContinuation<T, Error>) {
+        self.continuation = continuation
+    }
+    
+    func resume(returning value: T) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !didResume else { return }
+        didResume = true
+        continuation.resume(returning: value)
+    }
+    
+    func resume(throwing error: Error) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !didResume else { return }
+        didResume = true
+        continuation.resume(throwing: error)
+    }
+}
+
 /// Thuật toán EcoCRC8 độc quyền của Ecovacs để mã hóa buffer cấu hình Wi-Fi
 public enum EcoCRC8 {
     /// Bảng tra cứu CRC8 với đa thức chuẩn ITU 0x07 (x^8 + x^2 + x + 1)
@@ -111,6 +138,8 @@ public final class EcovacsProvisioningService: ObservableObject {
         
         // 5. Mở Socket TCP tới 192.168.0.1:9876 bằng Network.framework (an toàn, không crash)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let gate = ContinuationGate(continuation)
+            
             let endpoint = NWEndpoint.hostPort(
                 host: NWEndpoint.Host(self.robotAPHost),
                 port: NWEndpoint.Port(rawValue: self.robotAPPort)!
@@ -121,19 +150,14 @@ public final class EcovacsProvisioningService: ObservableObject {
             let params = NWParameters(tls: nil, tcp: tcpOptions)
             let connection = NWConnection(to: endpoint, using: params)
             
-            var didResume = false
-            
             connection.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
                     // Đã kết nối TCP thành công tới Robot -> Bắn gói tin
                     connection.send(content: jsonData, completion: .contentProcessed { sendError in
                         if let sendError = sendError {
-                            if !didResume {
-                                didResume = true
-                                connection.cancel()
-                                continuation.resume(throwing: sendError)
-                            }
+                            connection.cancel()
+                            gate.resume(throwing: sendError)
                             return
                         }
                         
@@ -143,44 +167,29 @@ public final class EcovacsProvisioningService: ObservableObject {
                                 connection.cancel()
                             }
                             if let recvError = recvError {
-                                if !didResume {
-                                    didResume = true
-                                    continuation.resume(throwing: recvError)
-                                }
+                                gate.resume(throwing: recvError)
                                 return
                             }
                             
                             if let data = data, let respStr = String(data: data, encoding: .utf8) {
                                 print("[EcovacsProvisioning] Robot response: \(respStr)")
                                 if respStr.contains("\"ret\":\"ok\"") || respStr.contains("\"ok\"") {
-                                    if !didResume {
-                                        didResume = true
-                                        continuation.resume()
-                                    }
+                                    gate.resume(returning: ())
                                     return
                                 }
                             }
                             
-                            // Nếu robot đã nhận byte nhưng đóng socket trước khi parse
-                            if !didResume {
-                                didResume = true
-                                continuation.resume()
-                            }
+                            // Nếu robot đã nhận byte nhưng đóng socket
+                            gate.resume(returning: ())
                         }
                     })
                     
                 case .failed(let err):
-                    if !didResume {
-                        didResume = true
-                        connection.cancel()
-                        continuation.resume(throwing: err)
-                    }
+                    connection.cancel()
+                    gate.resume(throwing: err)
                     
                 case .cancelled:
-                    if !didResume {
-                        didResume = true
-                        continuation.resume(throwing: NSError(domain: "Provisioning", code: -3, userInfo: [NSLocalizedDescriptionKey: "Kết nối tới Robot bị hủy."]))
-                    }
+                    gate.resume(throwing: NSError(domain: "Provisioning", code: -3, userInfo: [NSLocalizedDescriptionKey: "Kết nối tới Robot bị hủy."]))
                     
                 default:
                     break
@@ -189,11 +198,8 @@ public final class EcovacsProvisioningService: ObservableObject {
             
             // Timeout bảo vệ 10 giây nếu robot không phản hồi
             DispatchQueue.global().asyncAfter(deadline: .now() + 10.0) {
-                if !didResume {
-                    didResume = true
-                    connection.cancel()
-                    continuation.resume(throwing: NSError(domain: "Provisioning", code: -4, userInfo: [NSLocalizedDescriptionKey: "Không thể kết nối tới Robot tại 192.168.0.1:9876. Bạn đã kết nối Wi-Fi ECOVACS_xxxx chưa?"]))
-                }
+                connection.cancel()
+                gate.resume(throwing: NSError(domain: "Provisioning", code: -4, userInfo: [NSLocalizedDescriptionKey: "Không thể kết nối tới Robot tại 192.168.0.1:9876. Bạn đã kết nối Wi-Fi ECOVACS_xxxx chưa?"]))
             }
             
             connection.start(queue: .global())
@@ -207,7 +213,8 @@ public final class EcovacsProvisioningService: ObservableObject {
         sck2: String,
         maxAttempts: Int = 20
     ) async throws -> String {
-        guard let creds = KeychainManager.shared.getCredentials() else {
+        let creds = try await EcovacsAuthService.shared.ensureValidToken()
+        guard !creds.userId.isEmpty else {
             throw NSError(domain: "Provisioning", code: -5, userInfo: [NSLocalizedDescriptionKey: "Chưa đăng nhập tài khoản Ecovacs! Vui lòng đăng nhập trước."])
         }
         
@@ -272,7 +279,7 @@ public final class EcovacsProvisioningService: ObservableObject {
         // Gọi đồng bộ danh sách thiết bị trên Cloud để nhận diện robot mới
         let devices = try await EcovacsDeviceService.shared.fetchDevices()
         if let newestDevice = devices.first {
-            let robotName = newestDevice.nickName.isEmpty ? newestDevice.name : newestDevice.nickName
+            let robotName = newestDevice.displayName.isEmpty ? newestDevice.name : newestDevice.displayName
             self.step = .success(robotName: robotName)
             self.isBusy = false
             return robotName
