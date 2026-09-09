@@ -715,8 +715,7 @@ public final class EcovacsDeviceService {
             svg.append("  </g>")
             
             svg.append("</svg>")
-            return (svg.joined(separator: "
-"), viewBoxRect)
+            return (svg.joined(separator: "\n"), viewBoxRect)
         } else {
             // 2. Robot DEEBOT T10 TURBO (1e7dc98b) -> Nạp bản đồ LiDAR SLAM thực tế từ Hướng 2 DIY Backend
             let viewBoxRect = CGRect(x: -153, y: -123, width: 186, height: 151)
@@ -784,8 +783,7 @@ public final class EcovacsDeviceService {
             svg.append("  </g>")
             
             svg.append("</svg>")
-            return (svg.joined(separator: "
-"), viewBoxRect)
+            return (svg.joined(separator: "\n"), viewBoxRect)
         }
     }
     
