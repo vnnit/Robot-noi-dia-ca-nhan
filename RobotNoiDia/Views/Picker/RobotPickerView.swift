@@ -266,31 +266,9 @@ public struct RobotPickerView: View {
                     .tabViewStyle(.page(indexDisplayMode: .never))
                     .frame(height: 310)
                     
-                    // 4. Ba Nút Tác Vụ Nhanh (Hình vuông bo góc nền trắng)
-                    HStack(spacing: 24) {
-                        // Nút 1: Trình quản lý Video
-                        Button(action: {
-                            showToastNotify("Camera AI & Video Manager đang kích hoạt")
-                        }) {
-                            VStack(spacing: 8) {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 18)
-                                        .fill(Color.white)
-                                        .frame(width: 68, height: 68)
-                                        .shadow(color: Color.black.opacity(0.06), radius: 8, y: 4)
-                                    
-                                    Image(systemName: "video.fill")
-                                        .font(.system(size: 22))
-                                        .foregroundColor(Color(white: 0.25))
-                                }
-                                
-                                Text("Quản lý Video")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(Color(white: 0.45))
-                            }
-                        }
-                        
-                        // Nút 2: Bắt đầu / Tạm dừng (Start Play)
+                    // 4. Hai Nút Tác Vụ Nhanh (Hình vuông bo góc nền trắng)
+                    HStack(spacing: 36) {
+                        // Nút 1: Bắt đầu / Tạm dừng (Start Play)
                         Button(action: {
                             guard let dev = currentRobot else { return }
                             Task {
@@ -308,21 +286,21 @@ public struct RobotPickerView: View {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 18)
                                         .fill(Color.white)
-                                        .frame(width: 68, height: 68)
+                                        .frame(width: 72, height: 72)
                                         .shadow(color: Color.black.opacity(0.06), radius: 8, y: 4)
                                     
                                     Image(systemName: (currentRobot?.isCleaning ?? false) ? "pause.fill" : "play.fill")
-                                        .font(.system(size: 24))
+                                        .font(.system(size: 26))
                                         .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
                                 }
                                 
                                 Text((currentRobot?.isCleaning ?? false) ? "Tạm dừng" : "Bắt đầu")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(Color(white: 0.45))
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(Color(white: 0.3))
                             }
                         }
                         
-                        // Nút 3: Về Dock (Docking)
+                        // Nút 2: Về Dock (Docking)
                         Button(action: {
                             guard let dev = currentRobot else { return }
                             Task {
@@ -339,17 +317,17 @@ public struct RobotPickerView: View {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 18)
                                         .fill(Color.white)
-                                        .frame(width: 68, height: 68)
+                                        .frame(width: 72, height: 72)
                                         .shadow(color: Color.black.opacity(0.06), radius: 8, y: 4)
                                     
                                     Image(systemName: "bolt.fill")
-                                        .font(.system(size: 22))
+                                        .font(.system(size: 24))
                                         .foregroundColor(Color(white: 0.25))
                                 }
                                 
                                 Text("Về Dock")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(Color(white: 0.45))
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(Color(white: 0.3))
                             }
                         }
                     }
@@ -414,25 +392,7 @@ public struct RobotPickerView: View {
                     }
                     .frame(maxWidth: .infinity)
                     
-                    // Tab 2: Đổi tên Robot
-                    Button(action: {
-                        if let r = currentRobot {
-                            renameText = r.displayName
-                            showRenameAlert = true
-                        }
-                    }) {
-                        VStack(spacing: 4) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 19))
-                                .foregroundColor(.gray)
-                            Text("Đổi tên")
-                                .font(.system(size: 11))
-                                .foregroundColor(.gray)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    
-                    // Tab 3: Đăng xuất
+                    // Tab 2: Đăng xuất
                     Button(action: {
                         showLogoutAlert = true
                     }) {

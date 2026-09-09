@@ -12,6 +12,8 @@ public struct RobotControlView: View {
     }
     
     @State private var sheetSnap: SheetSnapState = .standard
+    @State private var currentSheetOffsetY: CGFloat = 0
+    @State private var isOffsetInitialized: Bool = false
     @State private var dragOffset: CGFloat = 0
     
     @State private var showRenameAlert: Bool = false
@@ -28,22 +30,15 @@ public struct RobotControlView: View {
             let screenHeight = geometry.size.height
             let screenWidth = geometry.size.width
             
-            let compactHeight: CGFloat = 135
-            let standardHeight: CGFloat = 275
+            let compactOffsetY = screenHeight - 135
+            let standardOffsetY = screenHeight - 275
+            let expandedOffsetY: CGFloat = 90
             let expandedHeight: CGFloat = screenHeight - 90
             
-            let compactOffsetY = screenHeight - compactHeight
-            let standardOffsetY = screenHeight - standardHeight
-            let expandedOffsetY: CGFloat = 90
-            
-            let baseOffsetY: CGFloat = {
-                switch sheetSnap {
-                case .compact: return compactOffsetY
-                case .standard: return standardOffsetY
-                case .expanded: return expandedOffsetY
-                }
+            let effectiveOffsetY: CGFloat = {
+                let base = isOffsetInitialized ? currentSheetOffsetY : standardOffsetY
+                return max(expandedOffsetY, min(compactOffsetY, base + dragOffset))
             }()
-            let currentSheetOffsetY = max(expandedOffsetY, min(compactOffsetY, baseOffsetY + dragOffset))
             
             ZStack(alignment: .top) {
                 Color(red: 0.94, green: 0.96, blue: 0.98)
@@ -61,8 +56,9 @@ public struct RobotControlView: View {
                 
                 bottomSheetContainer(
                     screenWidth: screenWidth,
+                    screenHeight: screenHeight,
                     expandedHeight: expandedHeight,
-                    offsetY: currentSheetOffsetY
+                    offsetY: effectiveOffsetY
                 )
                 
                 toastOverlayView
@@ -106,37 +102,83 @@ public struct RobotControlView: View {
         }
     }
     
-    // MARK: - Gestures
-    private var sheetDragGesture: some Gesture {
-        DragGesture(minimumDistance: 5)
+    // MARK: - Gestures & Sheet Snap Helpers
+    private func snapTargetOffsetY(for snap: SheetSnapState, screenHeight: CGFloat) -> CGFloat {
+        switch snap {
+        case .compact: return screenHeight - 135
+        case .standard: return screenHeight - 275
+        case .expanded: return 90
+        }
+    }
+    
+    private func toggleSheetSnap(screenHeight: CGFloat) {
+        HapticManager.shared.light()
+        let nextSnap: SheetSnapState
+        switch sheetSnap {
+        case .compact: nextSnap = .standard
+        case .standard: nextSnap = .expanded
+        case .expanded: nextSnap = .standard
+        }
+        let targetY = snapTargetOffsetY(for: nextSnap, screenHeight: screenHeight)
+        isOffsetInitialized = true
+        withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+            currentSheetOffsetY = targetY
+            sheetSnap = nextSnap
+        }
+    }
+    
+    private func sheetDragGesture(screenHeight: CGFloat) -> some Gesture {
+        let compactOffsetY = screenHeight - 135
+        let standardOffsetY = screenHeight - 275
+        let expandedOffsetY: CGFloat = 90
+        
+        return DragGesture(minimumDistance: 4)
             .onChanged { value in
+                if !isOffsetInitialized {
+                    currentSheetOffsetY = snapTargetOffsetY(for: sheetSnap, screenHeight: screenHeight)
+                    isOffsetInitialized = true
+                }
                 dragOffset = value.translation.height
             }
             .onEnded { value in
-                let translation = value.translation.height
+                let currentY = currentSheetOffsetY + value.translation.height
+                let clampedY = max(expandedOffsetY, min(compactOffsetY, currentY))
                 let velocity = value.predictedEndTranslation.height
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                    switch sheetSnap {
-                    case .compact:
-                        if translation < -80 || velocity < -150 {
-                            sheetSnap = .expanded
-                        } else if translation < -25 || velocity < -50 {
-                            sheetSnap = .standard
-                        }
-                    case .standard:
-                        if translation < -40 || velocity < -120 {
-                            sheetSnap = .expanded
-                        } else if translation > 40 || velocity > 120 {
-                            sheetSnap = .compact
-                        }
-                    case .expanded:
-                        if translation > 150 || velocity > 250 {
-                            sheetSnap = .compact
-                        } else if translation > 35 || velocity > 100 {
-                            sheetSnap = .standard
-                        }
+                
+                let targetSnap: SheetSnapState
+                switch sheetSnap {
+                case .compact:
+                    if velocity < -180 || clampedY < (compactOffsetY + standardOffsetY) / 2 {
+                        targetSnap = (velocity < -400 || clampedY < standardOffsetY - 40) ? .expanded : .standard
+                    } else {
+                        targetSnap = .compact
                     }
-                    dragOffset = 0
+                case .standard:
+                    if velocity < -100 || clampedY < (standardOffsetY + expandedOffsetY) / 2 {
+                        targetSnap = .expanded
+                    } else if velocity > 100 || clampedY > (standardOffsetY + compactOffsetY) / 2 {
+                        targetSnap = .compact
+                    } else {
+                        targetSnap = .standard
+                    }
+                case .expanded:
+                    if velocity > 180 || clampedY > (expandedOffsetY + standardOffsetY) / 2 {
+                        targetSnap = (velocity > 400 || clampedY > standardOffsetY + 40) ? .compact : .standard
+                    } else {
+                        targetSnap = .expanded
+                    }
+                }
+                
+                let targetY = snapTargetOffsetY(for: targetSnap, screenHeight: screenHeight)
+                
+                // Gán vị trí xuất phát chính xác tại điểm thả tay (loại bỏ hoàn toàn hiện tượng khựng/nhảy vị trí)
+                currentSheetOffsetY = clampedY
+                dragOffset = 0
+                
+                HapticManager.shared.light()
+                withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+                    currentSheetOffsetY = targetY
+                    sheetSnap = targetSnap
                 }
             }
     }
@@ -544,8 +586,9 @@ public struct RobotControlView: View {
     }
     
     @ViewBuilder
-    private func bottomSheetContainer(screenWidth: CGFloat, expandedHeight: CGFloat, offsetY: CGFloat) -> some View {
+    private func bottomSheetContainer(screenWidth: CGFloat, screenHeight: CGFloat, expandedHeight: CGFloat, offsetY: CGFloat) -> some View {
         VStack(spacing: 0) {
+            // Header Handle (Kéo hoặc chạm để chuyển đổi 3 nấc mượt mà)
             VStack(spacing: 4) {
                 Capsule()
                     .fill(Color.gray.opacity(0.35))
@@ -569,23 +612,14 @@ public struct RobotControlView: View {
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
             .onTapGesture {
-                HapticManager.shared.light()
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                    switch sheetSnap {
-                    case .compact:
-                        sheetSnap = .standard
-                    case .standard:
-                        sheetSnap = .expanded
-                    case .expanded:
-                        sheetSnap = .standard
-                    }
-                }
+                toggleSheetSnap(screenHeight: screenHeight)
             }
-            .highPriorityGesture(sheetDragGesture)
+            .gesture(sheetDragGesture(screenHeight: screenHeight))
             
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
                     bottomSheetMainActions
+                        .gesture(sheetSnap != .expanded ? sheetDragGesture(screenHeight: screenHeight) : nil)
                     
                     Divider()
                         .background(Color.gray.opacity(0.15))
@@ -608,7 +642,6 @@ public struct RobotControlView: View {
         .cornerRadius(24, corners: [.topLeft, .topRight])
         .shadow(color: Color.black.opacity(0.12), radius: 12, y: -4)
         .offset(y: offsetY)
-        .simultaneousGesture(sheetDragGesture)
     }
     
     @ViewBuilder

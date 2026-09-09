@@ -47,30 +47,10 @@ public final class RobotPickerViewModel: ObservableObject {
                     self.errorMessage = "Chưa tìm thấy robot nào trong tài khoản."
                 }
                 
-                // Nạp nhanh pin & dọn dẹp chạy ngầm không chặn giao diện
-                await withTaskGroup(of: (Int, Bool, Int?, Bool?, String?, String?).self) { group in
-                    for (index, dev) in fetched.enumerated() {
-                        group.addTask {
-                            let qs = await self.deviceService.getQuickStatus(device: dev)
-                            return (index, qs.isOnline, qs.battery, qs.isCharging, qs.cleanState, qs.cleanStateText)
-                        }
-                    }
-                    
-                    for await (index, isOnline, batt, ch, st, text) in group {
-                        if index < self.devices.count {
-                            self.devices[index].status = isOnline ? 1 : 0
-                            self.devices[index].battery = isOnline ? batt : nil
-                            self.devices[index].isCharging = isOnline ? ch : false
-                            self.devices[index].cleanState = isOnline ? st : "offline"
-                            self.devices[index].cleanStateText = isOnline ? text : "Ngoại tuyến"
-                        }
-                    }
-                }
-                
-                // Lưu lại cache gồm cả trạng thái pin
+                // Lưu lại cache
                 self.deviceService.saveCachedDevices(self.devices)
                 
-                // Bắt đầu chu kỳ làm mới thẻ định kỳ 5 giây
+                // Bắt đầu chu kỳ làm mới nhẹ nhàng định kỳ 30 giây (chỉ kiểm tra danh sách thiết bị từ máy chủ)
                 startAutoPolling()
             } catch {
                 self.isLoading = false
@@ -101,26 +81,14 @@ public final class RobotPickerViewModel: ObservableObject {
     
     public func startAutoPolling() {
         stopAutoPolling()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+        // Làm mới danh sách thiết bị nhẹ nhàng mỗi 30s (không gọi devmanager gây nhảy trạng thái)
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
-                for (index, dev) in self.devices.enumerated() {
-                    let qs = await self.deviceService.getQuickStatus(device: dev)
-                    if index < self.devices.count {
-                        self.devices[index].status = qs.isOnline ? 1 : 0
-                        self.devices[index].battery = qs.isOnline ? qs.battery : nil
-                        self.devices[index].isCharging = qs.isOnline ? (qs.isCharging ?? false) : false
-                        self.devices[index].cleanState = qs.isOnline ? qs.cleanState : "offline"
-                        self.devices[index].cleanStateText = qs.isOnline ? qs.cleanStateText : "Ngoại tuyến"
-                        NotificationManager.shared.notifyQuickStatusChange(
-                            device: self.devices[index],
-                            battery: self.devices[index].battery,
-                            isCharging: self.devices[index].isCharging,
-                            cleanState: self.devices[index].cleanState
-                        )
-                    }
+                if let updated = try? await self.deviceService.fetchDevices(forceRefreshAuth: false) {
+                    self.devices = updated
+                    self.deviceService.saveCachedDevices(updated)
                 }
-                self.deviceService.saveCachedDevices(self.devices)
             }
         }
     }
