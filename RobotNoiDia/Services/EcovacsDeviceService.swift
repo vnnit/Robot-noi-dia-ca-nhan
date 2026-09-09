@@ -848,6 +848,8 @@ public final class EcovacsDeviceService {
     
     public func getSvgMapWithDetails(
         device: DeviceModel,
+        isCharging: Bool? = nil,
+        mapId: String? = nil,
         currentPos: (x: Double, y: Double, a: Double)? = nil,
         currentDock: (x: Double, y: Double)? = nil,
         trajectory: [MapPoint] = [],
@@ -863,15 +865,24 @@ public final class EcovacsDeviceService {
             if dock == nil { dock = fetched.dockPos }
         }
         
-        // 2. Kiểm tra trạng thái sạc
-        let chargeRes = try? await executeCommand(device: device, cmdName: "getChargeState", payloadArgs: [:])
-        let isCharging = (extractBodyData(chargeRes ?? [:])?["isCharging"] as? Int) == 1
+        // 2. Kiểm tra trạng thái sạc (nếu có sẵn từ state thì dùng ngay, không cần gọi REST tốn 2-3s)
+        let resolvedCharging: Bool
+        if let ch = isCharging {
+            resolvedCharging = ch
+        } else if let chargeRes = try? await executeCommand(device: device, cmdName: "getChargeState", payloadArgs: [:]),
+                  let body = extractBodyData(chargeRes) {
+            resolvedCharging = (body["isCharging"] as? Int) == 1
+        } else {
+            resolvedCharging = true
+        }
         
         // 3. Lấy map ID độc lập cho từng robot từ Ecovacs Cloud (getMajorMap)
-        var mid = device.did.contains("d3fe81e0") ? "1582797248" : "1626251293"
-        if let res = try? await executeCommand(device: device, cmdName: "getMajorMap", payloadArgs: [:]),
-           let body = extractBodyData(res) {
-            mid = (body["mid"] as? String) ?? (body["mid"] as? Int).map { String($0) } ?? mid
+        var mid = mapId ?? (device.did.contains("d3fe81e0") ? "1582797248" : "1626251293")
+        if (mapId == nil || mapId?.isEmpty == true) {
+            if let res = try? await executeCommand(device: device, cmdName: "getMajorMap", payloadArgs: [:]),
+               let body = extractBodyData(res) {
+                mid = (body["mid"] as? String) ?? (body["mid"] as? Int).map { String($0) } ?? mid
+            }
         }
         
         // 4. Diện tích dọn dẹp thực tế độc lập theo từng robot (T9 AIVI: 34 m², T10 TURBO: 48 m²)
@@ -879,7 +890,7 @@ public final class EcovacsDeviceService {
         let (svg, viewBox) = generateSvgMap(
             device: device,
             mid: mid,
-            isCharging: isCharging,
+            isCharging: resolvedCharging,
             robotPos: pos,
             dockPos: dock,
             trajectory: trajectory,

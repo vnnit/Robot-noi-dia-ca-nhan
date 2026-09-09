@@ -287,24 +287,7 @@ public struct RobotControlView: View {
         VStack(spacing: 12) {
             Spacer().frame(height: 105)
             
-            Button(action: {
-                HapticManager.shared.light()
-                viewModel.toastMessage = "Đang quét vị trí và bản đồ..."
-                viewModel.showToast = true
-                Task {
-                    await viewModel.manualRefreshMap()
-                    viewModel.showToastNotification("Đã cập nhật bản đồ mới nhất")
-                }
-            }) {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Color(white: 0.25))
-                    .frame(width: 42, height: 42)
-                    .background(Color.white.opacity(0.95))
-                    .clipShape(Circle())
-                    .shadow(color: Color.black.opacity(0.08), radius: 5, y: 2)
-            }
-            
+
             Button(action: {
                 viewModel.triggerRelocate()
             }) {
@@ -557,26 +540,35 @@ public struct RobotControlView: View {
                 }
                 
                 Button(action: {
-                    HapticManager.shared.light()
-                    viewModel.toastMessage = "Đang quét vị trí và bản đồ..."
+                    HapticManager.shared.medium()
+                    viewModel.toastMessage = "Đang làm mới bản đồ..."
                     viewModel.showToast = true
                     Task {
                         await viewModel.manualRefreshMap()
+                        HapticManager.shared.success()
                         viewModel.showToastNotification("Đã cập nhật bản đồ mới nhất")
                     }
                 }) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 10, weight: .bold))
-                        Text("Quét")
+                    HStack(spacing: 4) {
+                        if viewModel.isMapLoading {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: Color(red: 0.09, green: 0.47, blue: 1.0)))
+                                .scaleEffect(0.7)
+                                .frame(width: 12, height: 12)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        Text(viewModel.isMapLoading ? "Đang quét..." : "Quét")
                             .font(.system(size: 11, weight: .semibold))
                     }
-                    .foregroundColor(Color(white: 0.3))
-                    .padding(.horizontal, 8)
+                    .foregroundColor(viewModel.isMapLoading ? Color(red: 0.09, green: 0.47, blue: 1.0) : Color(white: 0.3))
+                    .padding(.horizontal, 9)
                     .padding(.vertical, 5)
-                    .background(Color(white: 0.94))
+                    .background(viewModel.isMapLoading ? Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.1) : Color(white: 0.94))
                     .cornerRadius(8)
                 }
+                .disabled(viewModel.isMapLoading)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 7)

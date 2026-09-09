@@ -817,6 +817,8 @@ public final class RobotControlViewModel: ObservableObject {
         isMapLoading = true
         let mapResult = await deviceService.getSvgMapWithDetails(
             device: device,
+            isCharging: state.isCharging,
+            mapId: self.mapId,
             currentPos: (state.robotX, state.robotY, state.robotAngle),
             currentDock: (state.dockX, state.dockY),
             trajectory: state.trajectory,
