@@ -19,8 +19,16 @@ public enum Constants {
     public static let loginApiBaseUrl = "https://gl-cn-api.ecovacs.cn"
     public static let openApiBaseUrl = "https://gl-cn-openapi.ecovacs.cn"
     public static let portalApiBaseUrl = "https://portal.ecouser.net"
-    
-    // MARK: - Direct Ecovacs Cloud Endpoints (Zero-Server Architecture)
+    // MARK: - DIY Custom Backend Server (HƯỚNG 2 - Live LiDAR Map v1.1.15)
+    public static var diyServerBaseUrl: String {
+        get {
+            let saved = UserDefaults.standard.string(forKey: "custom_diy_server_url")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return saved.isEmpty ? "http://144.202.92.46:8080" : saved
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "custom_diy_server_url")
+        }
+    }
 
     public static func portalUrl(for country: String = "CN") -> String {
         let code = country.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()

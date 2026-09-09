@@ -478,6 +478,78 @@ public final class EcovacsDeviceService {
             self.dockPos = dockPos
             self.viewBox = viewBox
         }
+    // MARK: - Tải bản đồ LiDAR độ phân giải cao từ Máy chủ DIY (HƯỚNG 2 - v1.1.15)
+    public func fetchMapFromDIYServer(device: DeviceModel) async -> MapResult? {
+        let baseUrl = Constants.diyServerBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: "\(baseUrl)/api/devices/\(device.did)/map") else {
+            return nil
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 4.0
+        
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let hasMap = json["has_map"] as? Bool, hasMap,
+                  let svg = json["svg"] as? String,
+                  svg.contains("<svg") else {
+                return nil
+            }
+            
+            var vb = CGRect(x: -40, y: -40, width: 780, height: 680)
+            if let range = svg.range(of: "viewBox=\"") {
+                let sub = svg[range.upperBound...]
+                if let endRange = sub.range(of: "\"") {
+                    let parts = sub[..<endRange.lowerBound].split(separator: " ").compactMap { Double($0) }
+                    if parts.count == 4 {
+                        vb = CGRect(x: parts[0], y: parts[1], width: parts[2], height: parts[3])
+                    }
+                }
+            }
+            
+            return MapResult(svg: svg, mid: "LiDAR", coverageM2: 0, viewBox: vb)
+        } catch {
+            return nil
+        }
+    }
+    
+    public func triggerDiyMapRefresh(device: DeviceModel) async -> MapResult? {
+        let baseUrl = Constants.diyServerBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: "\(baseUrl)/api/devices/\(device.did)/map/refresh") else {
+            return nil
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 6.0
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = "{}".data(using: .utf8)
+        
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let svg = json["svg"] as? String,
+                  svg.contains("<svg") else {
+                return nil
+            }
+            
+            var vb = CGRect(x: -40, y: -40, width: 780, height: 680)
+            if let range = svg.range(of: "viewBox=\"") {
+                let sub = svg[range.upperBound...]
+                if let endRange = sub.range(of: "\"") {
+                    let parts = sub[..<endRange.lowerBound].split(separator: " ").compactMap { Double($0) }
+                    if parts.count == 4 {
+                        vb = CGRect(x: parts[0], y: parts[1], width: parts[2], height: parts[3])
+                    }
+                }
+            }
+            
+            return MapResult(svg: svg, mid: "LiDAR", coverageM2: 0, viewBox: vb)
+        } catch {
+            return nil
+        }
     }
     
     public func getSvgMapWithDetails(

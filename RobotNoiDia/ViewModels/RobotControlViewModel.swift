@@ -186,6 +186,7 @@ public final class RobotControlViewModel: ObservableObject {
                 await self.refreshState(full: false)
                 if isCleaning || self.selectedTab == .map {
                     await self.refreshLivePositionAndTrajectory()
+                    await self.refreshMap()
                 }
             }
         }
@@ -401,27 +402,43 @@ public final class RobotControlViewModel: ObservableObject {
         }
     }
     
-    // MARK: - Map Realtime (Zero-Server)
-    public func updateMapSvg() async {
-        let res = await deviceService.getSvgMapWithDetails(
-            device: device,
-            currentPos: (state.robotX, state.robotY, state.robotAngle),
-            currentDock: (state.dockX, state.dockY),
-            trajectory: state.trajectory,
-            virtualWalls: state.virtualWalls,
-            restrictedZones: state.restrictedZones
-        )
-        self.svgMap = res.svg
-        self.mapId = res.mid
-        self.mapCoverageM2 = res.coverageM2
-        self.mapBounds = res.viewBox
-    }
-    
+    // MARK: - Map Realtime (v1.1.15 - DIY Server & LiDAR)
     public func refreshMap() async {
         isMapLoading = true
-        await refreshLivePositionAndTrajectory()
-        await updateMapSvg()
+        // 1. Kích hoạt cập nhật bản đồ mới nhất từ robot qua DIY server (chuẩn v1.1.15)
+        var mapResult = await deviceService.triggerDiyMapRefresh(device: device)
+        // 2. Nếu không có kết quả mới, lấy trực tiếp từ cache server DIY
+        if mapResult == nil {
+            mapResult = await deviceService.fetchMapFromDIYServer(device: device)
+        }
+        // 3. Nếu server chưa sẵn sàng, dự phòng qua Ecovacs Cloud
+        if mapResult == nil {
+            mapResult = await deviceService.getSvgMapWithDetails(
+                device: device,
+                currentPos: (state.robotX, state.robotY, state.robotAngle),
+                currentDock: (state.dockX, state.dockY),
+                trajectory: state.trajectory,
+                virtualWalls: state.virtualWalls,
+                restrictedZones: state.restrictedZones
+            )
+        }
+        if let res = mapResult {
+            self.svgMap = res.svg
+            self.mapId = res.mid
+            if let cov = res.coverageM2, cov > 0 {
+                self.mapCoverageM2 = cov
+            }
+            self.mapBounds = res.viewBox
+        } else {
+            self.svgMap = nil
+            self.mapId = nil
+            self.mapCoverageM2 = nil
+        }
         self.isMapLoading = false
+    }
+    
+    public func updateMapSvg() async {
+        await refreshMap()
     }
     
     // MARK: - Quản Lý Tường Ảo & Vùng Cấm (Virtual Boundaries)
