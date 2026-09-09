@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import Darwin
 
 /// Helper điều phối luồng hoàn thành của Continuation an toàn đa luồng (Thread-safe Continuation Gate)
 private final class ContinuationGate<T>: @unchecked Sendable {
@@ -120,23 +121,28 @@ public final class EcovacsProvisioningService: ObservableObject {
         let slkBuffer = EcoCRC8.getConfigBuffer(jsonString: slkJson)
         let slkMsg = slkBuffer.base64EncodedString()
         
-        // 4. Tạo gói tin scpa theo đúng giao thức native của Ecovacs
-        let payload: [String: Any] = [
-            "td": "scpa",
-            "ssid": cleanSSID,
-            "passphrase": password,
-            "encrypt": password.isEmpty ? "no" : "yes",
-            "slk_msg": slkMsg
-        ]
-        
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
-            throw NSError(domain: "Provisioning", code: -2, userInfo: [NSLocalizedDescriptionKey: "Lỗi đóng gói JSON cấu hình Wi-Fi!"])
+        // 4. Tạo gói tin scpa theo đúng giao thức native của Ecovacs libjni-scpa.so
+        // Định dạng native: @{"td":"scpa","ssid":"...","passphrase":"...","encrypt":"yes","append_info":"0","slk_msg":"..."}
+        let rawJson = "{\"td\":\"scpa\",\"ssid\":\"\(cleanSSID)\",\"passphrase\":\"\(password)\",\"encrypt\":\"\(password.isEmpty ? "no" : "yes")\",\"append_info\":\"0\",\"slk_msg\":\"\(slkMsg)\"}"
+        let packetString = "@" + rawJson
+        guard let packetData = packetString.data(using: .utf8) else {
+            throw NSError(domain: "Provisioning", code: -2, userInfo: [NSLocalizedDescriptionKey: "Lỗi đóng gói gói tin cấu hình Wi-Fi!"])
         }
         
-        self.step = .sendingToRobot(progress: "Đang kết nối tới Robot qua cổng TCP 9876...")
+        self.step = .sendingToRobot(progress: "Đang kết nối tới Robot qua Wi-Fi (192.168.0.1:9876)...")
         self.isBusy = true
         
-        // 5. Mở Socket TCP tới 192.168.0.1:9876 bằng Network.framework (an toàn, không crash)
+        // Cách 1: Sử dụng BSD Socket với IP_BOUND_IF ép qua adapter Wi-Fi en0 (chống bị 4G Cellular chiếm luồng)
+        do {
+            print("[SoftAP] Thử kết nối trực tiếp qua BSD Socket gắn với adapter Wi-Fi...")
+            let resp = try sendViaBsdSocket(host: self.robotAPHost, port: self.robotAPPort, data: packetData)
+            print("[SoftAP] BSD Socket phản hồi thành công: \(resp)")
+            return sck2
+        } catch {
+            print("[SoftAP] BSD Socket thất bại: \(error.localizedDescription). Thử phương thức NWConnection ép interface Wi-Fi...")
+        }
+        
+        // Cách 2: Sử dụng Network.framework với requiredInterfaceType = .wifi
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let gate = ContinuationGate(continuation)
             
@@ -146,15 +152,20 @@ public final class EcovacsProvisioningService: ObservableObject {
             )
             
             let tcpOptions = NWProtocolTCP.Options()
-            tcpOptions.connectionTimeout = 8
+            tcpOptions.connectionTimeout = 6
+            tcpOptions.enableKeepalive = false
+            
             let params = NWParameters(tls: nil, tcp: tcpOptions)
+            params.requiredInterfaceType = .wifi // Ép buộc sử dụng Wi-Fi (bỏ qua 4G/Cellular)
+            params.prohibitedInterfaceTypes = [.cellular]
+            
             let connection = NWConnection(to: endpoint, using: params)
             
             connection.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
                     // Đã kết nối TCP thành công tới Robot -> Bắn gói tin
-                    connection.send(content: jsonData, completion: .contentProcessed { sendError in
+                    connection.send(content: packetData, completion: .contentProcessed { sendError in
                         if let sendError = sendError {
                             connection.cancel()
                             gate.resume(throwing: sendError)
@@ -173,7 +184,7 @@ public final class EcovacsProvisioningService: ObservableObject {
                             
                             if let data = data, let respStr = String(data: data, encoding: .utf8) {
                                 print("[EcovacsProvisioning] Robot response: \(respStr)")
-                                if respStr.contains("\"ret\":\"ok\"") || respStr.contains("\"ok\"") {
+                                if respStr.contains("ok") || respStr.contains("ret") {
                                     gate.resume(returning: ())
                                     return
                                 }
@@ -196,16 +207,70 @@ public final class EcovacsProvisioningService: ObservableObject {
                 }
             }
             
-            // Timeout bảo vệ 10 giây nếu robot không phản hồi
-            DispatchQueue.global().asyncAfter(deadline: .now() + 10.0) {
+            // Timeout bảo vệ 8 giây nếu robot không phản hồi
+            DispatchQueue.global().asyncAfter(deadline: .now() + 8.0) {
                 connection.cancel()
-                gate.resume(throwing: NSError(domain: "Provisioning", code: -4, userInfo: [NSLocalizedDescriptionKey: "Không thể kết nối tới Robot tại 192.168.0.1:9876. Bạn đã kết nối Wi-Fi ECOVACS_xxxx chưa?"]))
+                gate.resume(throwing: NSError(domain: "Provisioning", code: -4, userInfo: [NSLocalizedDescriptionKey: "Không thể kết nối tới Robot tại 192.168.0.1:9876. Hãy thử tạm TẮT Dữ liệu di động (4G/LTE) trong Cài đặt iPhone để máy không bỏ qua mạng Wi-Fi của Robot."]))
             }
             
             connection.start(queue: .global())
         }
         
         return sck2
+    }
+    
+    /// Gửi qua BSD Socket tiêu chuẩn và ép buộc gắn vào interface Wi-Fi (en0)
+    private nonisolated func sendViaBsdSocket(host: String, port: UInt16, data: Data) throws -> String {
+        let sock = socket(AF_INET, SOCK_STREAM, 0)
+        guard sock >= 0 else {
+            throw NSError(domain: "Provisioning", code: -10, userInfo: [NSLocalizedDescriptionKey: "Không thể tạo socket (errno: \(errno))"])
+        }
+        defer {
+            Darwin.close(sock)
+        }
+        
+        // Ép buộc kết nối qua interface Wi-Fi (en0) để tránh bị 4G Cellular can thiệp
+        var wifiIndex = if_nametoindex("en0")
+        if wifiIndex > 0 {
+            _ = setsockopt(sock, IPPROTO_IP, IP_BOUND_IF, &wifiIndex, socklen_t(MemoryLayout<UInt32>.size))
+        }
+        
+        // Timeout 5 giây
+        var timeout = timeval(tv_sec: 5, tv_usec: 0)
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        
+        var serverAddr = sockaddr_in()
+        serverAddr.sin_family = sa_family_t(AF_INET)
+        serverAddr.sin_port = port.bigEndian
+        guard inet_pton(AF_INET, host, &serverAddr.sin_addr) == 1 else {
+            throw NSError(domain: "Provisioning", code: -11, userInfo: [NSLocalizedDescriptionKey: "IP không hợp lệ: \(host)"])
+        }
+        
+        let connectRes = withUnsafePointer(to: &serverAddr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(sock, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        
+        guard connectRes == 0 else {
+            let err = errno
+            throw NSError(domain: "Provisioning", code: -12, userInfo: [NSLocalizedDescriptionKey: "Lỗi kết nối Socket tới Robot (errno \(err): \(String(cString: strerror(err))))."])
+        }
+        
+        let sent = data.withUnsafeBytes { ptr in
+            Darwin.send(sock, ptr.baseAddress, data.count, 0)
+        }
+        guard sent > 0 else {
+            throw NSError(domain: "Provisioning", code: -13, userInfo: [NSLocalizedDescriptionKey: "Lỗi gửi dữ liệu sang Robot (errno: \(errno))"])
+        }
+        
+        var buf = [UInt8](repeating: 0, count: 2048)
+        let recvd = Darwin.recv(sock, &buf, buf.count, 0)
+        if recvd > 0 {
+            return String(bytes: buf[0..<recvd], encoding: .utf8) ?? ""
+        }
+        return ""
     }
     
     // MARK: - Bước 3: Polling Cloud lấy mã bí mật dùng 1 lần (bindtoken)

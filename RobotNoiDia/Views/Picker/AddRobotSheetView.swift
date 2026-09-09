@@ -392,6 +392,27 @@ public struct AddRobotSheetView: View {
                     .cornerRadius(8)
                 }
                 .padding(.top, 4)
+                
+                // Cảnh báo 4G Cellular gây ngắt mạng nội bộ
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Color(red: 0.85, green: 0.45, blue: 0.0))
+                        .padding(.top, 1)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Lưu ý về Dữ liệu di động (4G/LTE):")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color(red: 0.6, green: 0.25, blue: 0.0))
+                        Text("Wi-Fi của Robot không có Internet nên iOS sẽ tự động chuyển dữ liệu sang 4G và ngắt nối Robot. Bạn nên tạm TẮT 4G trong lúc bấm nạp Wi-Fi!")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(red: 0.4, green: 0.25, blue: 0.0))
+                            .lineSpacing(2)
+                    }
+                }
+                .padding(10)
+                .background(Color.yellow.opacity(0.18))
+                .cornerRadius(8)
             }
             .padding(14)
             .background(Color.white)
