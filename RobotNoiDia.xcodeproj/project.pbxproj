@@ -42,6 +42,7 @@
 		A10034 /* MapBackupSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10034 /* MapBackupSheetView.swift */; };
 		A10035 /* AddRobotSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10035 /* AddRobotSheetView.swift */; };
 		A10036 /* LocalNetworkScannerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10036 /* LocalNetworkScannerService.swift */; };
+		A10037 /* EcovacsProvisioningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10037 /* EcovacsProvisioningService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -82,6 +83,7 @@
 		B10034 /* MapBackupSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Control/MapBackupSheetView.swift"; sourceTree = "<group>"; };
 		B10035 /* AddRobotSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Picker/AddRobotSheetView.swift"; sourceTree = "<group>"; };
 		B10036 /* LocalNetworkScannerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNetworkScannerService.swift; sourceTree = "<group>"; };
+		B10037 /* EcovacsProvisioningService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EcovacsProvisioningService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -165,6 +167,7 @@
 				B10012 /* EcovacsMQTTService.swift */,
 				B10028 /* NotificationManager.swift */,
 				B10036 /* LocalNetworkScannerService.swift */,
+				B10037 /* EcovacsProvisioningService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -313,6 +316,7 @@
 				A10034 /* MapBackupSheetView.swift in Sources */,
 				A10035 /* AddRobotSheetView.swift in Sources */,
 				A10036 /* LocalNetworkScannerService.swift in Sources */,
+				A10037 /* EcovacsProvisioningService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -399,7 +403,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.35;
+				MARKETING_VERSION = 1.1.36;
 				PRODUCT_BUNDLE_IDENTIFIER = com.robot.noidia;
 				PRODUCT_NAME = RobotNoiDia;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -414,7 +418,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 39;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -424,7 +428,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.35;
+				MARKETING_VERSION = 1.1.36;
 				PRODUCT_BUNDLE_IDENTIFIER = com.robot.noidia;
 				PRODUCT_NAME = RobotNoiDia;
 				SWIFT_EMIT_LOC_STRINGS = YES;
