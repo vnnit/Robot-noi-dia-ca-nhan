@@ -26,6 +26,13 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Decrypt Source Code
+        run: |
+          pip install cryptography
+          python scripts/decrypt_source.py
+        env:
+          SOURCE_ENCRYPTION_KEY: ${{ secrets.SOURCE_ENCRYPTION_KEY }}
+
       - name: Setup Xcode
         run: |
           sudo xcode-select -s /Applications/Xcode_15.4.app || sudo xcode-select -s /Applications/Xcode.app

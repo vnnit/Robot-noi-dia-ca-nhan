@@ -11,3 +11,10 @@ Thumbs.db
 
 # Local References
 references/
+
+# Secret encryption key (NEVER commit to git)
+.secret_key
+
+# Plain source code (Kept locally only, never pushed unencrypted to GitHub)
+RobotNoiDia/
+RobotNoiDia.xcodeproj/
