@@ -186,7 +186,9 @@ public final class RobotControlViewModel: ObservableObject {
                 await self.refreshState(full: false)
                 if isCleaning || self.selectedTab == .map {
                     await self.refreshLivePositionAndTrajectory()
-                    await self.refreshMap()
+                    if self.svgMap == nil {
+                        await self.refreshMap()
+                    }
                 }
             }
         }
@@ -219,19 +221,16 @@ public final class RobotControlViewModel: ObservableObject {
             let dx = newPoint.x - last.x
             let dy = newPoint.y - last.y
             let dist = (dx * dx + dy * dy).squareRoot()
-            if dist >= 4.0 {
+            if dist >= 3.0 {
                 self.state.trajectory.append(newPoint)
-                Task { await updateMapSvg() }
             }
         } else {
             self.state.trajectory.append(newPoint)
-            Task { await updateMapSvg() }
         }
     }
     
     public func clearTrajectory() {
         self.state.trajectory.removeAll()
-        Task { await updateMapSvg() }
         showToastNotification("Đã làm mới vệt đường đi")
     }
 
@@ -402,38 +401,23 @@ public final class RobotControlViewModel: ObservableObject {
         }
     }
     
-    // MARK: - Map Realtime (v1.1.15 - DIY Server & LiDAR)
+    // MARK: - Map Realtime (100% Zero-Server via Ecovacs Cloud getMajorMap)
     public func refreshMap() async {
         isMapLoading = true
-        // 1. Kích hoạt cập nhật bản đồ mới nhất từ robot qua DIY server (chuẩn v1.1.15)
-        var mapResult = await deviceService.triggerDiyMapRefresh(device: device)
-        // 2. Nếu không có kết quả mới, lấy trực tiếp từ cache server DIY
-        if mapResult == nil {
-            mapResult = await deviceService.fetchMapFromDIYServer(device: device)
+        let mapResult = await deviceService.getSvgMapWithDetails(
+            device: device,
+            currentPos: (state.robotX, state.robotY, state.robotAngle),
+            currentDock: (state.dockX, state.dockY),
+            trajectory: state.trajectory,
+            virtualWalls: state.virtualWalls,
+            restrictedZones: state.restrictedZones
+        )
+        self.svgMap = mapResult.svg
+        self.mapId = mapResult.mid
+        if mapResult.coverageM2 > 0 {
+            self.mapCoverageM2 = mapResult.coverageM2
         }
-        // 3. Nếu server chưa sẵn sàng, dự phòng qua Ecovacs Cloud
-        if mapResult == nil {
-            mapResult = await deviceService.getSvgMapWithDetails(
-                device: device,
-                currentPos: (state.robotX, state.robotY, state.robotAngle),
-                currentDock: (state.dockX, state.dockY),
-                trajectory: state.trajectory,
-                virtualWalls: state.virtualWalls,
-                restrictedZones: state.restrictedZones
-            )
-        }
-        if let res = mapResult {
-            self.svgMap = res.svg
-            self.mapId = res.mid
-            if res.coverageM2 > 0 {
-                self.mapCoverageM2 = res.coverageM2
-            }
-            self.mapBounds = res.viewBox
-        } else {
-            self.svgMap = nil
-            self.mapId = nil
-            self.mapCoverageM2 = nil
-        }
+        self.mapBounds = mapResult.viewBox
         self.isMapLoading = false
     }
     

@@ -480,15 +480,15 @@ public final class EcovacsDeviceService {
         }
     }
     
-    // MARK: - Tải bản đồ LiDAR độ phân giải cao từ Máy chủ DIY (HƯỚNG 2 - v1.1.15)
+    // MARK: - Tải bản đồ (100% Zero-Server Local Mode qua Ecovacs Cloud)
     public func fetchMapFromDIYServer(device: DeviceModel) async -> MapResult? {
         let baseUrl = Constants.diyServerBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard let url = URL(string: "\(baseUrl)/api/devices/\(device.did)/map") else {
+        guard !baseUrl.isEmpty, let url = URL(string: "\(baseUrl)/api/devices/\(device.did)/map") else {
             return nil
         }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.timeoutInterval = 4.0
+        request.timeoutInterval = 2.0
         
         do {
             let (data, response) = try await session.data(for: request)
@@ -519,12 +519,12 @@ public final class EcovacsDeviceService {
     
     public func triggerDiyMapRefresh(device: DeviceModel) async -> MapResult? {
         let baseUrl = Constants.diyServerBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard let url = URL(string: "\(baseUrl)/api/devices/\(device.did)/map/refresh") else {
+        guard !baseUrl.isEmpty, let url = URL(string: "\(baseUrl)/api/devices/\(device.did)/map/refresh") else {
             return nil
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = 6.0
+        request.timeoutInterval = 2.0
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = "{}".data(using: .utf8)
         
@@ -672,20 +672,20 @@ public final class EcovacsDeviceService {
         svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"\(vx) \(vy) \(vw) \(vh)\" width=\"100%\" height=\"100%\" style=\"background-color:#070b14;\">")
         svg.append("  <defs>")
         svg.append("    <linearGradient id=\"bgRoom1\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">")
-        svg.append("      <stop offset=\"0%\" stop-color=\"#1e3a8a\" stop-opacity=\"0.4\"/>")
-        svg.append("      <stop offset=\"100%\" stop-color=\"#0f2b5c\" stop-opacity=\"0.4\"/>")
+        svg.append("      <stop offset=\"0%\" stop-color=\"#1e40af\" stop-opacity=\"0.75\"/>")
+        svg.append("      <stop offset=\"100%\" stop-color=\"#0284c7\" stop-opacity=\"0.75\"/>")
         svg.append("    </linearGradient>")
         svg.append("    <linearGradient id=\"bgRoom2\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">")
-        svg.append("      <stop offset=\"0%\" stop-color=\"#065f46\" stop-opacity=\"0.35\"/>")
-        svg.append("      <stop offset=\"100%\" stop-color=\"#022c22\" stop-opacity=\"0.35\"/>")
+        svg.append("      <stop offset=\"0%\" stop-color=\"#065f46\" stop-opacity=\"0.75\"/>")
+        svg.append("      <stop offset=\"100%\" stop-color=\"#10b981\" stop-opacity=\"0.75\"/>")
         svg.append("    </linearGradient>")
         svg.append("    <linearGradient id=\"bgRoom3\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">")
-        svg.append("      <stop offset=\"0%\" stop-color=\"#581c87\" stop-opacity=\"0.35\"/>")
-        svg.append("      <stop offset=\"100%\" stop-color=\"#3b0764\" stop-opacity=\"0.35\"/>")
+        svg.append("      <stop offset=\"0%\" stop-color=\"#6b21a8\" stop-opacity=\"0.75\"/>")
+        svg.append("      <stop offset=\"100%\" stop-color=\"#a855f7\" stop-opacity=\"0.75\"/>")
         svg.append("    </linearGradient>")
         svg.append("    <linearGradient id=\"bgRoom4\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">")
-        svg.append("      <stop offset=\"0%\" stop-color=\"#78350f\" stop-opacity=\"0.3\"/>")
-        svg.append("      <stop offset=\"100%\" stop-color=\"#451a03\" stop-opacity=\"0.3\"/>")
+        svg.append("      <stop offset=\"0%\" stop-color=\"#854d0e\" stop-opacity=\"0.75\"/>")
+        svg.append("      <stop offset=\"100%\" stop-color=\"#eab308\" stop-opacity=\"0.75\"/>")
         svg.append("    </linearGradient>")
         svg.append("    <filter id=\"glow\" x=\"-20%\" y=\"-20%\" width=\"140%\" height=\"140%\">")
         svg.append("      <feGaussianBlur stdDeviation=\"4\" result=\"blur\" />")
