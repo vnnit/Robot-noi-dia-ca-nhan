@@ -933,22 +933,7 @@ public final class EcovacsDeviceService {
         virtualWalls: [VirtualWall] = [],
         restrictedZones: [RestrictedZone] = []
     ) -> (svg: String, viewBox: CGRect) {
-        // Kiểm tra bản đồ đã lưu riêng cho thiết bị này trong UserDefaults (nếu có)
-        let mapKey = "svg_map_\(device.did)"
-        if let cachedSvg = UserDefaults.standard.string(forKey: mapKey), !cachedSvg.isEmpty {
-            var vb = device.did.contains("d3fe81e0") ? CGRect(x: -212, y: -17, width: 271, height: 96) : CGRect(x: -153, y: -123, width: 186, height: 151)
-            if let range = cachedSvg.range(of: "viewBox=\"") {
-                let sub = cachedSvg[range.upperBound...]
-                if let endRange = sub.range(of: "\"") {
-                    let parts = sub[..<endRange.lowerBound].split(separator: " ").compactMap { Double($0) }
-                    if parts.count == 4 {
-                        vb = CGRect(x: parts[0], y: parts[1], width: parts[2], height: parts[3])
-                    }
-                }
-            }
-            return (cachedSvg, vb)
-        }
-        
+
         let isT9 = device.did.contains("d3fe81e0")
         
         if isT9 {

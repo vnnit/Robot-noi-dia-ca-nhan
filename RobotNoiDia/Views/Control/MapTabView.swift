@@ -140,7 +140,8 @@ public struct MapTabView: View {
                         robotX: viewModel.state.robotX,
                         robotY: viewModel.state.robotY,
                         robotAngle: viewModel.state.robotAngle,
-                        trajectory: viewModel.state.trajectory
+                        trajectory: viewModel.state.trajectory,
+                        reloadTrigger: viewModel.mapReloadId
                     )
                         .frame(height: 400)
                         .cornerRadius(16)

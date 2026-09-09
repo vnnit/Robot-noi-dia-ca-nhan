@@ -8,19 +8,22 @@ public struct SVGWebView: UIViewRepresentable {
     public let robotY: Double?
     public let robotAngle: Double?
     public let trajectory: [MapPoint]
+    public let reloadTrigger: UUID?
     
     public init(
         svgString: String,
         robotX: Double? = nil,
         robotY: Double? = nil,
         robotAngle: Double? = nil,
-        trajectory: [MapPoint] = []
+        trajectory: [MapPoint] = [],
+        reloadTrigger: UUID? = nil
     ) {
         self.svgString = svgString
         self.robotX = robotX
         self.robotY = robotY
         self.robotAngle = robotAngle
         self.trajectory = trajectory
+        self.reloadTrigger = reloadTrigger
     }
     
     public func makeCoordinator() -> Coordinator {
@@ -29,6 +32,7 @@ public struct SVGWebView: UIViewRepresentable {
     
     public class Coordinator: NSObject, WKNavigationDelegate {
         var lastLoadedSvg: String = ""
+        var lastReloadId: UUID? = nil
         var lastRobotX: Double? = nil
         var lastRobotY: Double? = nil
         var lastRobotAngle: Double? = nil
@@ -72,8 +76,11 @@ public struct SVGWebView: UIViewRepresentable {
         let coord = context.coordinator
         
         let ptsStr = trajectory.map { "\($0.x),\($0.y)" }.joined(separator: " ")
-        if coord.lastLoadedSvg != svgString {
+        let shouldReload = (coord.lastLoadedSvg != svgString) || (reloadTrigger != nil && coord.lastReloadId != reloadTrigger)
+        
+        if shouldReload {
             coord.lastLoadedSvg = svgString
+            coord.lastReloadId = reloadTrigger
             coord.isPageLoaded = false
             coord.lastRobotX = robotX
             coord.lastRobotY = robotY

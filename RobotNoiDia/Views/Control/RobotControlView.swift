@@ -206,7 +206,8 @@ public struct RobotControlView: View {
                             robotX: viewModel.state.robotX,
                             robotY: viewModel.state.robotY,
                             robotAngle: viewModel.state.robotAngle,
-                            trajectory: viewModel.state.trajectory
+                            trajectory: viewModel.state.trajectory,
+                            reloadTrigger: viewModel.mapReloadId
                         )
                         .disabled(viewModel.isEditingBoundaries)
                         
@@ -830,47 +831,25 @@ public struct RobotControlView: View {
                     }
                     .frame(maxWidth: .infinity)
                     
-                    // Nút Dọn rác hoặc Về trạm sạc
-                    if viewModel.device.hasAutoEmptyStation && viewModel.state.isCharging {
-                        Button(action: {
-                            HapticManager.shared.medium()
-                            viewModel.triggerStationAction(.emptyDustbin)
-                        }) {
-                            VStack(spacing: 6) {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color.purple.opacity(0.15))
-                                        .frame(width: 50, height: 50)
-                                    Image(systemName: "trash.fill")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(Color.purple)
-                                }
-                                Text(viewModel.state.dustbinEmptying ? "Đang gom..." : "Dọn rác")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(Color.purple)
+                    // Nút Về trạm sạc
+                    Button(action: {
+                        viewModel.triggerCharge()
+                    }) {
+                        VStack(spacing: 6) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(red: 0.95, green: 0.96, blue: 0.98))
+                                    .frame(width: 50, height: 50)
+                                Image(systemName: "bolt.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
                             }
+                            Text(viewModel.state.isCharging ? "Trạm sạc" : "Về dock")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(Color.gray)
                         }
-                        .frame(maxWidth: .infinity)
-                    } else {
-                        Button(action: {
-                            viewModel.triggerCharge()
-                        }) {
-                            VStack(spacing: 6) {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color(red: 0.95, green: 0.96, blue: 0.98))
-                                        .frame(width: 50, height: 50)
-                                    Image(systemName: "bolt.fill")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
-                                }
-                                Text("Trạm sạc")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(Color.gray)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
                     }
+                    .frame(maxWidth: .infinity)
                 }
             }
         }

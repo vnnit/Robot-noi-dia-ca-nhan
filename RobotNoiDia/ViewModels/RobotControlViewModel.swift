@@ -58,6 +58,7 @@ public final class RobotControlViewModel: ObservableObject {
     
     @Published public var isExecutingCommand: Bool = false
     @Published public var isMapLoading: Bool = false
+    @Published public var mapReloadId: UUID = UUID()
     @Published public var toastMessage: String? = nil
     @Published public var showToast: Bool = false
     
@@ -253,11 +254,41 @@ public final class RobotControlViewModel: ObservableObject {
             self.state.chargeText = self.state.isCharging ? "Đang sạc pin tại trạm" : "Đang sử dụng pin"
             NotificationManager.shared.notifyStateChange(device: self.device, state: self.state)
         } else if topic.contains("onPos") || topic.contains("getPos") {
+            var dPosDict: [String: Any]? = nil
             if let dPos = data["deebotPos"] as? [String: Any] {
-                let x = (dPos["x"] as? NSNumber)?.doubleValue ?? 0.0
-                let y = (dPos["y"] as? NSNumber)?.doubleValue ?? 0.0
+                dPosDict = dPos
+            } else if let dArr = data["deebotPos"] as? [[String: Any]], let first = dArr.first {
+                dPosDict = first
+            } else if data["x"] != nil && data["y"] != nil {
+                dPosDict = data
+            }
+            
+            if let dPos = dPosDict {
+                let invalid = (dPos["invalid"] as? Int) ?? 0
+                let rawX = (dPos["x"] as? NSNumber)?.doubleValue ?? 0.0
+                let rawY = (dPos["y"] as? NSNumber)?.doubleValue ?? 0.0
                 let a = (dPos["a"] as? NSNumber)?.doubleValue ?? 0.0
-                self.recordNewRobotPosition(x: x, y: y, angle: a)
+                
+                if !(invalid == 1 && rawX == 0 && rawY == 0) {
+                    let x = (abs(rawX) > 150) ? (rawX / 50.0) : rawX
+                    let y = (abs(rawY) > 150) ? (rawY / 50.0) : rawY
+                    self.recordNewRobotPosition(x: x, y: y, angle: a)
+                }
+            }
+            
+            var cPosDict: [String: Any]? = nil
+            if let cPos = (data["chargePos"] as? [String: Any]) ?? (data["chargerPos"] as? [String: Any]) {
+                cPosDict = cPos
+            } else if let cArr = (data["chargePos"] as? [[String: Any]]) ?? (data["chargerPos"] as? [[String: Any]]), let first = cArr.first {
+                cPosDict = first
+            }
+            if let cPos = cPosDict {
+                let rawX = (cPos["x"] as? NSNumber)?.doubleValue ?? 0.0
+                let rawY = (cPos["y"] as? NSNumber)?.doubleValue ?? 0.0
+                if rawX != 0 || rawY != 0 {
+                    self.state.dockX = (abs(rawX) > 150) ? (rawX / 50.0) : rawX
+                    self.state.dockY = (abs(rawY) > 150) ? (rawY / 50.0) : rawY
+                }
             }
         } else if topic.contains("onError") || topic.contains("getError") {
             if let code = data["code"] as? Int {
@@ -810,6 +841,7 @@ public final class RobotControlViewModel: ObservableObject {
         isMapLoading = true
         await refreshLivePositionAndTrajectory()
         await refreshMap()
+        self.mapReloadId = UUID()
         isMapLoading = false
     }
     
@@ -833,6 +865,7 @@ public final class RobotControlViewModel: ObservableObject {
             self.mapCoverageM2 = mapResult.coverageM2
         }
         self.mapBounds = mapResult.viewBox
+        self.mapReloadId = UUID()
         self.isMapLoading = false
     }
     
