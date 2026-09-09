@@ -904,8 +904,14 @@ public final class EcovacsDeviceService {
         var type = 1
         switch action {
         case .emptyDustbin:
-            act = 1
-            type = 1
+            // 1. Thử lệnh setAutoEmpty ("act": "start") trước (chuẩn cho dòng T9/T8/N8)
+            let res = try? await executeCommand(device: device, cmdName: "setAutoEmpty", payloadArgs: ["act": "start"])
+            if let r = res, r["ret"] as? String == "ok" {
+                return
+            }
+            // 2. Thử tiếp lệnh stationAction (act: 1, type: 1) cho dòng Omni/Turbo
+            _ = try await executeCommand(device: device, cmdName: "stationAction", payloadArgs: ["act": 1, "type": 1])
+            return
         case .startMopWash:
             act = 1
             type = 2
@@ -922,7 +928,23 @@ public final class EcovacsDeviceService {
         _ = try await executeCommand(device: device, cmdName: "stationAction", payloadArgs: ["act": act, "type": type])
     }
     
+    /// Kiểm tra phát hiện robot có dock hút rác tự động hay không (Auto-Empty Dock Detection)
+    public func checkAutoEmptyCapability(device: DeviceModel) async -> Bool {
+        let key = "has_auto_empty_\(device.did)"
+        if let res = try? await executeCommand(device: device, cmdName: "getAutoEmpty"),
+           let body = extractBodyData(res) {
+            let enable = (body["enable"] as? Int) ?? 0
+            let status = (body["status"] as? Int) ?? 0
+            if enable == 1 || status >= 0 || body["frequency"] != nil {
+                UserDefaults.standard.set(true, forKey: key)
+                return true
+            }
+        }
+        return UserDefaults.standard.bool(forKey: key)
+    }
+    
     public func getStationState(device: DeviceModel) async -> (isWashing: Bool, isDrying: Bool, dustbinFull: Bool) {
+        _ = await checkAutoEmptyCapability(device: device)
         guard let res = try? await executeCommand(device: device, cmdName: "getStationState"),
               let body = extractBodyData(res) else {
             return (false, false, false)

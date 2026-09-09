@@ -256,15 +256,15 @@ public struct SettingsTabView: View {
                                 )
                             }
                             
-                            if viewModel.device.hasOmniStation {
+                            if viewModel.device.hasSmartStation {
                                 Divider().padding(.leading, 50)
                                 
                                 Button(action: { showAboutStationSheet = true }) {
                                     settingItemRow(
-                                        icon: "powerplug.fill",
-                                        iconColor: Color.green,
-                                        title: "Thông tin Trạm sạc OMNI",
-                                        detail: "Trạm sạc tự động sấy khí nóng"
+                                        icon: viewModel.device.hasMopWashStation ? "powerplug.fill" : "trash.circle.fill",
+                                        iconColor: viewModel.device.hasMopWashStation ? Color.green : Color.purple,
+                                        title: viewModel.device.hasMopWashStation ? "Thông tin Trạm sạc OMNI/Turbo" : "Thông tin Trạm hút rác",
+                                        detail: viewModel.device.hasMopWashStation ? "Trạm sạc tự động giặt giẻ & sấy" : "Trạm sạc tự động dọn rác vào túi bụi"
                                     )
                                 }
                             }

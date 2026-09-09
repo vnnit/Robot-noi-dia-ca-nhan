@@ -167,6 +167,27 @@ public struct DeviceModel: Identifiable, Codable, Hashable {
         return text.contains("TURBO") || text.contains("OMNI") || text.contains("PRO") || text.contains("PLUS") || text.contains("T10") || text.contains("X1") || text.contains("X2") || text.contains("T20") || text.contains("T30")
     }
     
+    /// Kiểm tra robot có trạm giặt giẻ (Turbo / Omni / T10 Turbo / X1...)
+    public var hasMopWashStation: Bool {
+        let text = (friendlyModelName + " " + model + " " + deviceClass).uppercased()
+        return text.contains("TURBO") || text.contains("OMNI") || text.contains("PRO") || text.contains("T10") || text.contains("X1") || text.contains("X2") || text.contains("T20") || text.contains("T30")
+    }
+    
+    /// Kiểm tra robot có dock hút rác tự động (Auto-Empty Dock / Trạm rác: T9, T9 AIVI, T8, N8, Plus, Omni...)
+    public var hasAutoEmptyStation: Bool {
+        let key = "has_auto_empty_\(did)"
+        if UserDefaults.standard.object(forKey: key) != nil {
+            return UserDefaults.standard.bool(forKey: key)
+        }
+        let text = (friendlyModelName + " " + model + " " + deviceClass).uppercased()
+        return text.contains("T9") || text.contains("8KWDB4") || text.contains("PLUS") || text.contains("OMNI") || text.contains("T8") || text.contains("N8")
+    }
+    
+    /// Kiểm tra robot có bất kỳ loại trạm thông minh nào (Dock rác hoặc Trạm giặt giẻ)
+    public var hasSmartStation: Bool {
+        return hasAutoEmptyStation || hasMopWashStation || hasOmniStation
+    }
+    
     public var hasEdgeDeepCleaning: Bool {
         let text = (friendlyModelName + " " + model + " " + deviceClass).uppercased()
         return text.contains("T10") || text.contains("T20") || text.contains("T30") || text.contains("X1") || text.contains("X2")

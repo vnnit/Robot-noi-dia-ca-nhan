@@ -517,45 +517,73 @@ public struct RobotControlView: View {
             }
             .frame(maxWidth: .infinity)
             
-            Button(action: {
-                viewModel.triggerCharge()
-            }) {
-                VStack(spacing: 6) {
-                    ZStack {
-                        Circle()
-                            .fill(Color(white: 0.95))
-                            .frame(width: 50, height: 50)
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 20))
-                            .foregroundColor(Color(white: 0.25))
+            if viewModel.device.hasAutoEmptyStation && viewModel.state.isCharging {
+                Button(action: {
+                    viewModel.triggerStationAction(.emptyDustbin)
+                }) {
+                    VStack(spacing: 6) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.purple.opacity(0.15))
+                                .frame(width: 50, height: 50)
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(Color.purple)
+                        }
+                        Text(viewModel.state.dustbinEmptying ? "Đang dọn..." : "Dọn rác")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color.purple)
                     }
-                    Text("Trạm sạc")
-                        .font(.system(size: 11))
-                        .foregroundColor(Color(white: 0.35))
                 }
+                .frame(maxWidth: .infinity)
+            } else {
+                Button(action: {
+                    viewModel.triggerCharge()
+                }) {
+                    VStack(spacing: 6) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(white: 0.95))
+                                .frame(width: 50, height: 50)
+                            Image(systemName: "bolt.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(Color(white: 0.25))
+                        }
+                        Text("Trạm sạc")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(white: 0.35))
+                    }
+                }
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
         }
         .padding(.top, 2)
     }
     
     @ViewBuilder
     private var smartStationCard: some View {
-        if viewModel.device.hasOmniStation {
+        if viewModel.device.hasSmartStation {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center) {
                     HStack(spacing: 6) {
-                        Image(systemName: "powerplug.fill")
+                        Image(systemName: viewModel.device.hasMopWashStation ? "powerplug.fill" : "trash.circle.fill")
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
-                        Text("Trạm sạc thông minh (Turbo / OMNI)")
+                            .foregroundColor(viewModel.device.hasMopWashStation ? Color(red: 0.09, green: 0.47, blue: 1.0) : Color.purple)
+                        Text(viewModel.device.hasMopWashStation ? (viewModel.device.hasAutoEmptyStation ? "Trạm sạc đa năng (OMNI)" : "Trạm sạc thông minh (Turbo)") : "Trạm hút rác tự động (Auto-Empty)")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundColor(Color(white: 0.15))
                     }
                     
                     Spacer()
                     
-                    if viewModel.state.isWashingMop {
+                    if viewModel.state.dustbinEmptying {
+                        HStack(spacing: 4) {
+                            Circle().fill(Color.purple).frame(width: 6, height: 6)
+                            Text("Đang dọn rác...")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.purple)
+                        }
+                    } else if viewModel.state.isWashingMop {
                         HStack(spacing: 4) {
                             Circle().fill(Color.blue).frame(width: 6, height: 6)
                             Text("Đang giặt giẻ...")
@@ -569,79 +597,77 @@ public struct RobotControlView: View {
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundColor(.orange)
                         }
-                    } else if viewModel.state.dustbinEmptying {
-                        HStack(spacing: 4) {
-                            Circle().fill(Color.purple).frame(width: 6, height: 6)
-                            Text("Đang hút rác...")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.purple)
-                        }
                     } else {
-                        Text("Trạm sẵn sàng")
+                        Text("Dock sẵn sàng")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(Color(white: 0.5))
                     }
                 }
                 
                 HStack(spacing: 8) {
-                    // Nút 1: Giặt giẻ thủ công
-                    Button(action: {
-                        viewModel.triggerStationAction(viewModel.state.isWashingMop ? .stopMopWash : .startMopWash)
-                    }) {
-                        VStack(spacing: 4) {
-                            Image(systemName: viewModel.state.isWashingMop ? "stop.fill" : "drop.triangle.fill")
-                                .font(.system(size: 14))
-                            Text(viewModel.state.isWashingMop ? "Dừng giặt" : "Giặt giẻ")
-                                .font(.system(size: 11, weight: .bold))
-                            Text(viewModel.state.isWashingMop ? "Đang chạy" : "Thủ công")
-                                .font(.system(size: 9))
-                                .opacity(0.8)
+                    // Nút Dọn rác (Chỉ hiện khi robot có dock rác Auto-Empty)
+                    if viewModel.device.hasAutoEmptyStation {
+                        Button(action: {
+                            viewModel.triggerStationAction(.emptyDustbin)
+                        }) {
+                            VStack(spacing: 4) {
+                                Image(systemName: "trash.fill")
+                                    .font(.system(size: 14))
+                                Text(viewModel.state.dustbinEmptying ? "Đang hút..." : "Dọn rác")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text(viewModel.state.dustbinEmptying ? "Hút vào dock" : "Vào dock rác")
+                                    .font(.system(size: 9))
+                                    .opacity(0.8)
+                            }
+                            .foregroundColor(viewModel.state.dustbinEmptying ? .white : Color.purple)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(viewModel.state.dustbinEmptying ? Color.purple : Color.purple.opacity(0.12))
+                            .cornerRadius(10)
                         }
-                        .foregroundColor(viewModel.state.isWashingMop ? .white : Color(red: 0.09, green: 0.47, blue: 1.0))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(viewModel.state.isWashingMop ? Color.blue : Color(red: 0.91, green: 0.95, blue: 1.0))
-                        .cornerRadius(10)
                     }
                     
-                    // Nút 2: Bắt đầu sấy khô giẻ khí nóng (Hot Air Drying)
-                    Button(action: {
-                        viewModel.triggerStationAction(viewModel.state.isAirDrying ? .stopAirDrying : .startAirDrying)
-                    }) {
-                        VStack(spacing: 4) {
-                            Image(systemName: viewModel.state.isAirDrying ? "stop.fill" : "wind")
-                                .font(.system(size: 14))
-                            Text(viewModel.state.isAirDrying ? "Dừng sấy" : "Sấy khí nóng")
-                                .font(.system(size: 11, weight: .bold))
-                            Text(viewModel.state.isAirDrying ? "Đang sấy" : "Khí nóng 45°C")
-                                .font(.system(size: 9))
-                                .opacity(0.8)
+                    // Nút Giặt giẻ & Sấy khô (Chỉ hiện khi robot có trạm giặt Turbo/Omni)
+                    if viewModel.device.hasMopWashStation {
+                        // Nút 1: Giặt giẻ thủ công
+                        Button(action: {
+                            viewModel.triggerStationAction(viewModel.state.isWashingMop ? .stopMopWash : .startMopWash)
+                        }) {
+                            VStack(spacing: 4) {
+                                Image(systemName: viewModel.state.isWashingMop ? "stop.fill" : "drop.triangle.fill")
+                                    .font(.system(size: 14))
+                                Text(viewModel.state.isWashingMop ? "Dừng giặt" : "Giặt giẻ")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text(viewModel.state.isWashingMop ? "Đang chạy" : "Thủ công")
+                                    .font(.system(size: 9))
+                                    .opacity(0.8)
+                            }
+                            .foregroundColor(viewModel.state.isWashingMop ? .white : Color(red: 0.09, green: 0.47, blue: 1.0))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(viewModel.state.isWashingMop ? Color.blue : Color(red: 0.91, green: 0.95, blue: 1.0))
+                            .cornerRadius(10)
                         }
-                        .foregroundColor(viewModel.state.isAirDrying ? .white : Color.orange)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(viewModel.state.isAirDrying ? Color.orange : Color.orange.opacity(0.12))
-                        .cornerRadius(10)
-                    }
-                    
-                    // Nút 3: Tự động hút rác vào túi bụi (Auto-empty dustbin)
-                    Button(action: {
-                        viewModel.triggerStationAction(.emptyDustbin)
-                    }) {
-                        VStack(spacing: 4) {
-                            Image(systemName: "trash.fill")
-                                .font(.system(size: 14))
-                            Text(viewModel.state.dustbinEmptying ? "Đang hút..." : "Hút bụi rác")
-                                .font(.system(size: 11, weight: .bold))
-                            Text("Vào túi bụi")
-                                .font(.system(size: 9))
-                                .opacity(0.8)
+                        
+                        // Nút 2: Bắt đầu sấy khô giẻ khí nóng (Hot Air Drying)
+                        Button(action: {
+                            viewModel.triggerStationAction(viewModel.state.isAirDrying ? .stopAirDrying : .startAirDrying)
+                        }) {
+                            VStack(spacing: 4) {
+                                Image(systemName: viewModel.state.isAirDrying ? "stop.fill" : "wind")
+                                    .font(.system(size: 14))
+                                Text(viewModel.state.isAirDrying ? "Dừng sấy" : "Sấy khí nóng")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text(viewModel.state.isAirDrying ? "Đang sấy" : "Khí nóng 45°C")
+                                    .font(.system(size: 9))
+                                    .opacity(0.8)
+                            }
+                            .foregroundColor(viewModel.state.isAirDrying ? .white : Color.orange)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(viewModel.state.isAirDrying ? Color.orange : Color.orange.opacity(0.12))
+                            .cornerRadius(10)
                         }
-                        .foregroundColor(viewModel.state.dustbinEmptying ? .white : Color.purple)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(viewModel.state.dustbinEmptying ? Color.purple : Color.purple.opacity(0.12))
-                        .cornerRadius(10)
                     }
                 }
             }
@@ -650,7 +676,7 @@ public struct RobotControlView: View {
             .cornerRadius(14)
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color.blue.opacity(0.15), lineWidth: 1)
+                    .stroke(viewModel.device.hasAutoEmptyStation ? Color.purple.opacity(0.2) : Color.blue.opacity(0.15), lineWidth: 1)
             )
             
             Divider().padding(.vertical, 2)

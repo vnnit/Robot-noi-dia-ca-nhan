@@ -122,6 +122,11 @@ public final class RobotControlViewModel: ObservableObject {
             }
         }
         
+        // Khởi tạo trạng thái dock rác ban đầu nếu là T9 AIVI
+        if device.did.contains("d3fe81e0") {
+            UserDefaults.standard.set(true, forKey: "has_auto_empty_\(device.did)")
+        }
+        
         setupMqttListener()
     }
     
@@ -219,7 +224,7 @@ public final class RobotControlViewModel: ObservableObject {
             await refreshState(full: true)
             await refreshLivePositionAndTrajectory()
             await refreshConsumables()
-            if device.hasOmniStation {
+            if device.hasSmartStation {
                 await refreshStationState()
             }
             await refreshMap()
