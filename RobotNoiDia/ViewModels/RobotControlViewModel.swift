@@ -66,19 +66,27 @@ public final class RobotControlViewModel: ObservableObject {
         self.device = device
         if device.did.contains("d3fe81e0") {
             self.state.dockX = 5.66
-            self.state.dockY = -10.04
-            self.state.robotX = 5.68
+            self.state.dockY = -10.08
+            self.state.robotX = 5.60
             self.state.robotY = -10.06
-            self.mapBounds = CGRect(x: -209, y: -23, width: 268, height: 102)
+            self.mapBounds = CGRect(x: -212, y: -17, width: 271, height: 96)
             self.mapCoverageM2 = 34
+            self.mapId = "1582797248"
         } else {
-            self.state.dockX = 0.0
-            self.state.dockY = 0.0
-            self.state.robotX = 0.0
-            self.state.robotY = 0.0
-            self.mapBounds = CGRect(x: 0, y: 0, width: 800, height: 600)
+            self.state.dockX = 26.36
+            self.state.dockY = -55.24
+            self.state.robotX = 26.32
+            self.state.robotY = -55.24
+            self.mapBounds = CGRect(x: -153, y: -123, width: 186, height: 151)
             self.mapCoverageM2 = 48
+            self.mapId = "1626251293"
         }
+        // Nạp ngay bản đồ SVG cơ sở thực tế lập tức khi khởi tạo ViewModel
+        let instantMap = deviceService.getInstantSvgMap(device: device)
+        self.svgMap = instantMap.svg
+        self.mapBounds = instantMap.viewBox
+        self.mapId = instantMap.mid
+        self.mapCoverageM2 = instantMap.coverageM2
         setupMqttListener()
     }
     
@@ -427,7 +435,9 @@ public final class RobotControlViewModel: ObservableObject {
             virtualWalls: state.virtualWalls,
             restrictedZones: state.restrictedZones
         )
-        self.svgMap = mapResult.svg.isEmpty ? nil : mapResult.svg
+        if !mapResult.svg.isEmpty {
+            self.svgMap = mapResult.svg
+        }
         self.mapId = mapResult.mid
         if mapResult.coverageM2 > 0 {
             self.mapCoverageM2 = mapResult.coverageM2

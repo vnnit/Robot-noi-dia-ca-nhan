@@ -123,7 +123,7 @@ public struct MapTabView: View {
                             .stroke(Color.cyan.opacity(0.2), lineWidth: 1)
                     )
                 
-                if viewModel.isMapLoading {
+                if viewModel.isMapLoading && (viewModel.svgMap == nil || viewModel.svgMap?.isEmpty == true) {
                     VStack(spacing: 14) {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .cyan))

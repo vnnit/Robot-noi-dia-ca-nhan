@@ -112,7 +112,7 @@ public struct RobotControlView: View {
             Spacer().frame(height: 90)
             
             ZStack {
-                if viewModel.isMapLoading {
+                if viewModel.isMapLoading && (viewModel.svgMap == nil || viewModel.svgMap?.isEmpty == true) {
                     VStack(spacing: 12) {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: Color(red: 0.09, green: 0.47, blue: 1.0)))

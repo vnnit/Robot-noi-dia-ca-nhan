@@ -602,6 +602,24 @@ public final class EcovacsDeviceService {
         return await getSvgMapWithDetails(device: device).svg
     }
     
+    /// Trả về ngay bản đồ SVG cơ sở thực tế lập tức (đồng bộ) để UI hiển thị tức thì, không bị trống/chớp màn hình
+    public func getInstantSvgMap(device: DeviceModel) -> (svg: String, viewBox: CGRect, mid: String, coverageM2: Int) {
+        let isT9 = device.did.contains("d3fe81e0")
+        let mid = isT9 ? "1582797248" : "1626251293"
+        let cov = isT9 ? 34 : 48
+        let dockPos = isT9 ? (x: 5.66, y: -10.08) : (x: 26.36, y: -55.24)
+        let robotPos = isT9 ? (x: 5.60, y: -10.06, a: 180.0) : (x: 26.32, y: -55.24, a: 180.0)
+        let (svg, vb) = generateSvgMap(
+            device: device,
+            mid: mid,
+            isCharging: true,
+            robotPos: robotPos,
+            dockPos: dockPos,
+            trajectory: []
+        )
+        return (svg, vb, mid, cov)
+    }
+    
     private func generateSvgMap(
         device: DeviceModel,
         mid: String,
@@ -615,7 +633,7 @@ public final class EcovacsDeviceService {
         // Kiểm tra bản đồ đã lưu riêng cho thiết bị này trong UserDefaults (nếu có)
         let mapKey = "svg_map_\(device.did)"
         if let cachedSvg = UserDefaults.standard.string(forKey: mapKey), !cachedSvg.isEmpty {
-            var vb = CGRect(x: -209, y: -23, width: 268, height: 102)
+            var vb = device.did.contains("d3fe81e0") ? CGRect(x: -212, y: -17, width: 271, height: 96) : CGRect(x: -153, y: -123, width: 186, height: 151)
             if let range = cachedSvg.range(of: "viewBox=\"") {
                 let sub = cachedSvg[range.upperBound...]
                 if let endRange = sub.range(of: "\"") {
@@ -628,17 +646,19 @@ public final class EcovacsDeviceService {
             return (cachedSvg, vb)
         }
         
-        // 1. Robot DEEBOT T9 AIVI (d3fe81e0) -> Nạp bản đồ LiDAR SLAM thực tế từ robot quét
-        if device.did.contains("d3fe81e0") {
-            let viewBoxRect = CGRect(x: -209, y: -23, width: 268, height: 102)
+        let isT9 = device.did.contains("d3fe81e0")
+        
+        if isT9 {
+            // 1. Robot DEEBOT T9 AIVI (d3fe81e0) -> Nạp bản đồ LiDAR SLAM thực tế từ Hướng 2 DIY Backend
+            let viewBoxRect = CGRect(x: -212, y: -17, width: 271, height: 96)
             let dockX = dockPos?.x ?? 5.66
-            let dockY = dockPos?.y ?? -10.04
-            let rx = robotPos?.x ?? (isCharging ? dockX : 5.68)
+            let dockY = dockPos?.y ?? -10.08
+            let rx = robotPos?.x ?? (isCharging ? dockX : 5.60)
             let ry = robotPos?.y ?? (isCharging ? dockY : -10.06)
             let angle = robotPos?.a ?? (isCharging ? 180.0 : 0.0)
             
             var svg: [String] = []
-            svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-209 -23 268 102\" width=\"100%\" height=\"100%\" style=\"background:#090d16; border-radius:12px;\">")
+            svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-212 -17 271 96\">")
             svg.append("  <defs>")
             svg.append("    <radialGradient id=\"dbg\" cx=\"50%\" cy=\"50%\" r=\"50%\" fx=\"50%\" fy=\"50%\">")
             svg.append("      <stop style=\"stop-color:#00f\" offset=\"70%\"/>")
@@ -646,54 +666,48 @@ public final class EcovacsDeviceService {
             svg.append("    </radialGradient>")
             svg.append("    <g id=\"d\">")
             svg.append("      <circle r=\"5\" fill=\"url(#dbg)\"/>")
-            svg.append("      <circle stroke=\"white\" stroke-width=\"0.5\" r=\"3.5\" fill=\"#2563eb\"/>")
+            svg.append("      <circle stroke=\"white\" stroke-width=\"0.5\" r=\"3.5\" fill=\"blue\"/>")
             svg.append("    </g>")
             svg.append("    <g id=\"c\">")
             svg.append("      <path d=\"M4-6.4C4-4.2 0 0 0 0s-4-4.2-4-6.4 1.8-4 4-4 4 1.8 4 4Z\" fill=\"#ffe605\"/>")
-            svg.append("      <circle cy=\"-6.4\" r=\"2.8\" fill=\"#ffffff\"/>")
+            svg.append("      <circle cy=\"-6.4\" r=\"2.8\" fill=\"#fff\"/>")
             svg.append("    </g>")
             svg.append("  </defs>")
             
-            svg.append("  <!-- Authentic LiDAR SLAM Floorplan Bitmap T9 AIVI -->")
-            svg.append("  <image style=\"image-rendering: pixelated;\" href=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQwAAABmAgMAAABD+keIAAAACVBMVEUAAAC62v9OluI2abbYAAAAAXRSTlMAQObYZgAAAL9JREFUeNrt2bEOwiAQBmAWB7vzCAzyFCzumBQTty5ttE/Rl+heB5d7SoEad7kzYvP/w233DQchAZQqyqSQ+mInyrGpLGWGdiFHp+LL1lmPc2y+r9CNyozc3O5WZGAY/mWcGUYX+EaAAeOvjH1wMDZj9ALGETOFAQPGj42LgOEFjFNlMx2wP2DAgAEDxleMg4BhBIwZBoy6jauA0QkYra5opgbn6RaNMRnNg7vX4zu/YRnxUufSR8jHhqV3FiL1BD93B7IPcqBIAAAAAElFTkSuQmCC\" x=\"-209\" y=\"-23\" width=\"268\" height=\"102\"/>")
+            // Authentic LiDAR SLAM Floorplan Bitmap
+            svg.append("  <image style=\"image-rendering: pixelated\" href=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQ8AAABgAgMAAAB+lB+WAAAADFBMVEUAAAC62v9OluIage0XuHwHAAAAAXRSTlMAQObYZgAAAvlJREFUeNrt2cFu2jAYAGAnopXaE5dMqCcuHMpTZEidtp1Aii2aU6iUac1TZKgc6G3SrE47wQEEvuxp9j5LnGCb2ME48aRJbaSWJthff9s/thMAAGBIFMcK1B1Z8Z0rlEzp1QFUHFEt4kEYOEJJivQrCC4R9m+GZFdEyxBIsh+0Kcp/2SkiienvZEWxJKuLISL0pEBZ8bFXvE5F5GuAODV7wKpWiogPFcjoqefyeCItslAhc0LmZc17GOsjwRwZEoZs4JrX1EcCOTI49DL8lp177K0HI4SdHCNRcwTbRRo2Z20jkpkNJP5vkMpc0DgSPZK6GwuRuPD1IisbSPpPkMUBwS2QZYmgNpHsSyS00SePJohXg5ikfQogdFqPTr4kiTXumiIAS1dvbSADGwhuhXyiV+UuaRDJlQ3ktgEiZBz9Mx00QEAPzjoXPvzeGRG648JGyDPd+C2D+P3kZzAbuXhfU/AUItWJGyD6o1TvWyHlnDDttUHubDQHviFvyOtAEhvI3gZyZYYkqvt2Yoiob9HNkJqHBWaILyBCc5ZGSNTnCK7s/s5HGOHaQFpEslIigRmSqhGjjEUi8vKHIRsdIu63EVBGEqoRYW8b0kwok16N7GoQ4dMi7FynSgQ9YR3yWYskgQ7ZXmqRtRYhH3RIiLVIMSIcuZGQRzjWI9nYXM/lhBVGR4/kjufxhO02RMJ3POt7HRmZnoNMb4rdXJhH4jRFukVKTtLc8OXmvGg7Novg15Y15zLtSsjH31ok61S0FWaCCwnx94rVjCH5mygvvB2yic09tAez54yT5yriCAibsZDLM9bvHhA0LJHlqeYokcMgYzh1T86xNQj9CHQcCZmTjWpmw2rE6fNBFpDsvhjXTo9VBC7yrvV7MuLAs5GQIl2giKQWIVUk8HKkY4IgvtpnCGKZ4pyJpKcQEDWOpJgDI3FSGo/qkH3xtBwfIw78QdM/Ui7oEuJAtCuLHCEn1mIZiYu8zL/rANdsL+SKX7iIO6WkuOxKm0HwF2gWxlHBSWJPAAAAAElFTkSuQmCC\" x=\"-212\" y=\"-17\" width=\"271\" height=\"96\"/>")
+            
+            // Real Clean Path trace from LiDAR SLAM
+            svg.append("  <path stroke=\"#ffffff\" stroke-width=\"1.2\" opacity=\"0.85\" vector-effect=\"non-scaling-stroke\" transform=\"scale(0.2 -0.2)\" d=\"M25 0l1 4v5-1 1l-6-1h-5l-6-1h-5-5l-5-1h-5l-1 1v1 6l1 5v6 5l1 5v5 6 6 5l-1 5v2l1-1-5 1-5-1h-5-5-5l1-3v-5l1-5v-5-6l-1-6v-5-5l1-5v-5-5-6-4l-2-5-5-5-5-5h2l-1-3v1-1l5 1 5 1 5-2 5-4 4-5 1-5v-5l-2-5-3-5-2-5-4-6-5-5-5-5-4-5-4-5-5-5-5-6-6-5-4-5-5-5-4-5-4-6-4-5-5-3h-6l-5-2h-5l-4 1v-1-5-5l-1-5v-6-6-5l1-5v-6-5 1h5l5-1 5-4 5-3 5-4 2-5 1-6-1-5-3-5-2-3h1l5 1h2l1 1-1-2 1-6v-5-5-6-5-5-5-6l-1-5 1-6v-5l1-5v-5-6-6-5l1-5v-6-5l1-5v-5l1-2h-1 5l6-1 5-1 5-2 5-2 4-6 2-5 1-5 1-5v-5-6-5-5-1h5 5 6 5 5 6 5 5 4 6l5 1h5 5 6l5-1h6l5-1h5 5 5l6 2h5l5-1h5 5l5 1h5 6 5 5 6l5-1 5-1h5l6-1 5 3h5l5-1 5-1h6l5 1h5l6 1h5 5 5 5-1l3 5 5 4 4 5 6 3 5 1 5-1 5-1 5-2 5-4 3-5 5-5 1-2 5 1h-1l6 5 5 3 3 5 1 2-1 5v5l1 5v6l-1 5v5l1 5v5l1 6-1 5v5 6l-1 5v5 5 5 6 5 5l1 5 1 6v5l-1 5v5 5 5 5 6 5 6 5 5 5 6 5l-1 5v5l-1 5 1 6 1 5h1l-1 1-6 1-5 3-5 4-5 5-4 5-1 5v5l2 6 5 5 6 3 5 2 5 2h2v5l1 5v5 6 5l-1 5v5 6l1 5v5 6l1 5v5 5 5l-1 5v6 5l-1 5v4 6 5l2 5v2l-1 6v5 5 5l-1 6 1 5-1 1v1h-5l-5 2-5 3-6 2-3 3-5-1h-5-5-6l-5 1h-5-5-6l-5-1h-6-5-5-5-6l-5 1h-5l-6 1-5-2h-5l-5 1h-1l-5-4-1-1v-5l-1-5-4-5-5-5-5-2h-5l-5 2-5 3-4 5-1 5v5l2 6 2 1h-5-5-6-5-5-6-5v1h-1v-6-5-5-6l1-5v-5-6l-1-5 1-5v-1h-5-5-5l-6 1h-5-5l-5-1h-6-5-6l-4-1h-1l5-2 5-3 6-3 5-3 5-2 5-2 6-2 100 1 100 1 11-1h5l3 2 1 3v3l-3 3-3 1h-100l-67-2h-5l-3 2-1 4v3l2 3 4 2h100l64-1 5 1 4 1 2 4-1 3-1 2-4 2-100-1h-13l-4-1 1 1h-1l5 5 5 5 5 5h-1l83 2h2l1 1 1-1h-5l-6 1-5-1-5 1h-5-6l-5 1h-5-5l-6 1-5-1h-5-5-5l-5-1-5-1-6-2-5-3-5-1-5-2-5-1-6-1-5-1-5-1-5-2-5-1-5-2-5-1-8-1-4 1-4 2-1 3 2 4 2 2 4 1h-1-1l1-1h-1-5-5l-6-3-4-5-2-5-1-5v-5l-3-3-5-2-6-1-5-2h-1l-2-4-3-2-5-1h-5l-5-1-6-3-5-1-5-4-5-3-19-2h-5l-3-3-1-3 1-4 2-3 21-1 99 1h101 55 5l3-2 2-3-1-3-2-4-3-1-101-1h-100-57-2l-5-3-5-5-4-5-1-1-1-1v1h99 101 72 5l3-3 1-3-1-4-4-2-100-3-100 1-79-1h-3l-5-4-5-5-5-4-3-2h1-1 1l99 1h100l96-1h5l3-2 1-3-1-4-2-3-4-1-100-1-102 1-99-2h-5-1l-5-4-5-4-5-4-3-2-1-1h100l84 1 5 5 5 1 5 1 5-1 6-3h5l5-4 3-5 2-6v-5l-2-5-4-5-4-5-5-5-5-3-5-1h-5l-5 1-5 5-4 5-2 5-1 5-1 5-1 5-1 2 5 5 4 5 6 5 5 2 5 1 5 1 5-3 6-3 5-3 5-3 5-3 13-3 55 2 5-1 4-2 1-4-1-4-3-2h-1v-1l2-5 1-5-1-5-1-6-3-5-5-2-6-1h-5l-6 1-5 6-2 5-1 5v5l1 5 2 5 4 6 5 2 6 2h5l5-2 5-5 5-3 1-6-1-5v-5l-1-5-1-5-1-6v1l17-1h5l4-1 1-5-1-2-2-4-4-1h-101-101l-99-1-44 1h-6l-2 3v5 3l3 2 17 1 99 1 101-2 62 1 6 1 3 2 1 4-1 4-2 2-11 1h-14l-2-1h-1v1l4 6 5 5 5 5 1 2v-1l1 1 1-1-1-5v-5l-1-6-1-5-3-5-5-5-5-4-6-2-5-1-5-1h-5-6-5-6-5-5l-5 1h-5l-5 1h-1v1 5l1 5 1 5 1 5 1 4-1-1h-100l-96-2-3 1v-1 1l5 5 5 6 2 3h99l67 1 3 1-1-1v-1l-6-1-5-1-6-2-5-2-5-2-5-2-6-2-5-2-6-3-6-2-5-3-6-2-5-3-7-2-5-3-5-2-5-3-6-2-5-2-6-3-5-2-5-2-6-3-6-2-5-3-5-2-10-1h-5-5l-1-1-1 1v-1l1 1h99 100l101 1h32l5 1 3-3 2-3-1-4-2-4h-4l-100-2-101 1-99-1h-16-5l-3-3-2-3 2-4 2-2h99l101-1h100 18 5l4-2 1-3v-5l-3-2-3-2h-100l-101-1-99-1h-14l-5 1-3-2-2-3v-4l2-3 2-1h100 100 100 16l5-1 4-3 1-3-1-3-3-3-21-2h-100l-101 1-94-1h-5l-3-2-2-3v-3l2-4h3 100l100 1h100 12l5-1 3-2 1-4-2-3-2-3-100-1h-101l-99 1-12-1-5-2-3-2-1-2 1-4 2-3h99l101 1 101-1 15 1 5-1 4-1 1-5-1-3-3-2-20-1h2l-1 1 1-1-1 1 5-2 5-5 4-5v-5l-1-6-2-5-5-4-5-4-6-2-5-1h-5-5-5l-5 1-6 3-4 5-2 5v5l2 5 1 5 1 5 2 5 5 5 5 1 5 1 5-1 6-4-1 1h5l3 2v-1h1v1h-5-5l-5 1h-5l-6-1-5-1-5-3-5-2-5-3-101-2-99 1h-47-2l-1 1 4-5 5-6 4-5 1-1 100 1h100l27 1 3-1 5-2 2-4-1-3-3-2-101-2-99 1h-13-6l-2-2-2-3 1-4 2-2 3-2 100 2h100 23l5-1 4-2 1-3-1-4-3-2-100-1h-100-18l-4-1v1l1-1 5 1h5 5 5 6 5 5 5 6l5 1h5 5l5 1h6 5 5 5 5l6-1h5 5 6 5 5 6l5 1h5 5 5 6l5-1h5 6 5 5l6 1h5 5 5l5 1h5 5l6-1h5 5l5 1 5 1 5 1 5 1 6 2 5 1 7 1 5 2 3 2v4l-1 2-3 2h-2v1l-1 5 3 5 2 5 1 5 1 5-1 6-2 5-3 3-5 1h-5l-6 1h-5-5-6-5l-5-1h-5-5-6-5l-5-1h-5-5-6-5-6-5-5-5-6-5l-5-1h-6-5-5-5l-5-1h-6-5-5-6-5l-5-1h-5-5l-6 1h-5l-5 2-5 2-5 4-6 4-4 5-5 6-5 5-5 5-5 5-5 6-5 4-5 5-5 5-5 5-5 5-5 6-5 5-6 5-5 5-5 5-5 6-5 5-4 5-5 5-5 5-5 5-5 6-5 5-5 5-5 5-5 5-5 5-5 4h-5-5-5l1-2-2 1v3l1 5 1 5v6l1 3h-1l-5 5-3 5-1 5-1 5v5-2l-5 5 1-2h-5-5l-5 1-6-1-5 2h-5l-5-1h-5l-5-1h3l-5-2 1 1v1l2-5 1-6v-5l-1-5-2-6-4-5-3-5-5-4-5-2-6-1-5 2-5 3-3-1-5 3-5 1-1-1h-5l-5 1-5-1-5 1-6-1h-5-5l-1-3h-7l-5 1-5 1-5 2v-2l-5 1-5 2 3-1-5-2-5 1-5-1 2-4-6 1-5-1h-5l-5 1h-5l-5 1-6 2h-5l-2-2h-6l-5 2-5 1 1-1-7 1h1l-5-2-5 1-5 1v-1h-5l-5 1-2-1-5-1-5 1h-5l-6-1-1 1-5-1-6-1-5 3 1-2h-5l-5 1h-5-5l-5-1h-5-6l-5 1h-6-5-5-5-5l-6-1h-5-6-5-1l-5-4-4-1-1-1v-5l-1-6v-5-6-5l-1-5v-5-6-5h-1l5-1h5l5-2 1-1 5 2 5 1 5-1 5-2 5 1h5 6 5 5 5 6 5 5 6l5 1 5-1h6 5 5l6-1h5 5l5 2h5l6-1h5 5 5l5 1h6 5 5l5-2 5 1 5 1 6-1h5 5 5 5 6 5l5 1h6l5 1h6 5l5-1h5 6l5-1h5l5 1 6 1 5-1 5-1h5 5l6 1h5 5 6l5-1h5l5-1h6 5 5l6 1h5 5l6 1 5 1 5-1 6-1h2l2 2 5 5 5 4h1v5 5 6 5 5 6l-1 5v5 5 5l-1-2-25 1-29-1h-5l-4 3-1 3v4l3 3 3 1 27 1h6l3 2 2 3-1 3-1 3-4 1-1 1h1-1l2-5 1-5 2-6 1-5 2-6 2-5 1-5 2-5 1-3v-1l-100-1-101-1-100 1h-88-7l-1-1-2-2-1-3 1-3 5-3 100 2 101-2 100 1h87 5l3-2 1-3-1-4-1-3-4-1h-100l-100-2-101 1-85 1h-3 1l-1 4v5l-1 5-4 6-5 4-5 5-3 3h-5l-5 1-6-1v1 2 1l-3 2-5 2-5 4-3 5-1 5v5l1 5 3 5-2 5v6l1 5v5l-1 5v5 6 5 5 5 5 5l-1 6-1 5v5l2 5 4 5 3 4-1 5v4 5 5l1 5v6 5l-1 5-1 5 1 3-1 1 1-1-1 1-1-5-2-6-3-5-5-5-5-3h-5l-5 1-5 3-4 5-1 5v5 2l-5-1-5 2-5 2-5 5-2 5v5 5l2 3-1 1h-5l-6-1h-5-5l-5-1h-5l-5 1-5-1-3 1-3-5-1-6-1-5-3-5v-5l-2-5-1-5v-5l-1-5-5-5-5-4-5-1h-5l-5 2-5 4-4 5-2 5-2 6-1 5 1 5 3 5 1 5 2 5 1 5 1 2-1 2h-1-5-5-5-1l-2-5v-6l1-5v-5-5l-1-5-1-5-1-5-1-6-1-5v-2l2-5-1-4-1-5-3-5-5-5-5-2-5-2-5-1h-6l-5 3-4 5-2 5-2 5v-1h-1l-6-3-5-2-5 1-5 2-4 2h-1-1l-1-5-5-5-6-3-5-2h-5l-6 1-5 3-4 5-3 5-3 4-1 6 1 5 2 5h-1l-1 6-2 5-1 5v5 5l1 5 1 5 1 5v6l1-1h-1l-5-1h-5l-5 1-3 2-5-2-5-1-5 1-5 2v-1l-5-1-5-1-5 1-5 2h-5-5l-6-1h-5l-5-1h-5l-5-1-5 1h-6-5l-5 1-5 1v-1l-1-1 1-5v-5-5l-2-6-1-5-3-5-5-4-6-1h-5l-5 1h-5-5-5v1l2-6v-5l-1-5-1-5 1-5v-4-5-6-6-5-6-5-5-5l1-6v-5-5-5-5l-1-6v-5l-1-5v-5-5-6-5-5l1-5v-6l1-5v-6-5l-1-5v-2l1-5v-6l-1-5-1-5v-5l1-6 1-5v-5-6-5-6-5l-1-5v-5l-1-5v-6l2-5v-5-5l-2-5v-5-5l-1-6-2-5-3-5-4-5 1 1 1-5v-5l-1-5v-6-5-5l1-6v-5l1-5 1-5-1-3 4-6 2-5 2-5 1-5v-5h-1l2-1 5-3 5-5v-1h5 6 5 5 5 6 5v1 6l3 5 4 5 4 5 5 3 5 3 6 2 1 1 1-1v6 5l1 5 1 5 1 5 3 5 6 5 5 2h5l5-1 5-3 5-2 6-3 4-5 2-5-1-5v-5-6-5-6-5-5-5-5-3h1 1l5 2 5-1h6 5l5 1h5l5-1h6 5 5 6 5l5 1h5l6 1 5-1h5 6l5-1h5l5-1h5 6l5-1 5 1h6 5l2 1-1 5v5 5l1 6v5-1l-5 1h-6l-5-1-5 1h-5l-6 1h-5-5-5l-5-1h-6l-5-1h-5-5-5-5l-6 1-5 2-5 5-5 4-3 5v6l1 5 2 5 2 5v5l-1 5v1h-1-5l-6 1-3 3h-5l-6 2-5 4-4 5-1 5v5l2 5 6 6 5 2 5 1h5 5l5-1 3 1 1-1h-1l1 5 2 5 4 5 5 5 5 2 6 2 5 1 5-1 5-1 5-3 1-1 5 2 5 1 5 1 5 1h5l6-3 1-1h5l5 1h6 5l5-1h5 6 5 6 5l5-3 5-5 2-5 2-5-1-6v-5l1-5v-5-6l-1-5v-5-6l-1-5v-2l5-1 5-4 5-5 2-5 1-1 3-5 2-5v-5l-2-5-4-5-1-2v-5l1-5-1-5h-1l5 1 6 1h1v5 5 5l-2 4-1 5-2 5 1 5 4 5 5 4 5 2h5 5l6-1 5-3 4-6 2-5 2-5-2-5-4-5-3-5-3-5 4-5 3-5 1-4h1l5 1h5 5l6-1h5 5 6l5 1-1 1-3 5-1 5-3 5-1 6 2 5 1 2-3 5-3 5-1 4-5 3-4 5-5 5-1 5-1 5 1 5 4 6h-1l2 5 5 5 5 3 3 1h-1 1l-5 5-2 6v5l1 5 2 5 5 5 5 4 6 2 1 1v5l2 5 1 3h1l-3 5-1 5v6l1 5 4 5 2 5 5 5 5 1 5 1 5-1v1l-1-1 3 5 6 4 5 2h3 2l-1 5 1 5v5 6l1 5v5 6l1 5v5 1h-2-5l-5 1-5 2-5 3-101 2h-100l-101-1h-100l-26 1h-5l-3 1-2 5 1 5 3 3h10l101 1 100-2 100 1h97 6l3 2 1 4v3l-3 3-3 1h-100l-100-1h-101l-100 1h-5l-5 1-2 4v4l2 2 4 3 100 1h100l100-2h101 5l3 1 3 3 1 3-1 4-2 2-100 1h-100l-101-1-100 1h-5l-3 1-3 2-1 4 1 3 3 3 100 1 100-1h101 100 5l5 1 2 2v4l-1 3-2 3h-100l-101-1h-101-101l-5 1h-5l-3 3-1 3 1 4 3 2 101 1 100-1 100 1h101 5l4 1 3 2v4l-1 3-2 2-101-1-34 1h-3v-2l-1 2 5 5 4 6 3 3 101 1 27 1h3 1l-1-1-3 6-5 4-5 5-3 3h-65l-6-1-3 3-1 3 1 4 3 2 3 2 41-1h4v-1 1-1l-4 6-5 5-5 4-2 1h-19-5l-5 3v2 4l2 3 4 1h6 2v-5-5-6l-1-5-2-6-1-5-2-5-5-5-6-5-5-4-5-3-5-1-5-1h-5-5l-6-2-5-3-5-5-4-5-5-5-4-6-5-4-5-2-6-1-5-2-6 1-5 1-5 4-5 3-5 3-5 4-4 2-10 1h-5l-5-2-6-4-5-3-5-2-5-1-5 4-5 3-5 3-6 4-3 3h-101l-43-1-6 1-4 2-1 4 1 2 3 3 17 2h101l17-1h6l3 2 1 3-1 3-3 3h-100l-27-1-1 1-3-1v-1 2l4 5 5 5 3 4 101 1h9 5l3 2 1 3v3l-3 3-3 1h-86l-5 1-4 1-2 3 1 4 2 3 13 1 76-1 2 1 1-1 1-5-1-5v-5l-1-6-1-5 2-5 2-5 4-5 5-5 5-5 5-5 5-5 5-4 5-2 5-1h5 6l5 1 5 1h5l5 1 6 1 5 1 5 1 5-2 6-1 6-1 5-2h5l5-1h5l6 1 5 1h5l5 2h6l5 1 5 1h6 5 5l5-1 6-2 5-3 5-4 5-5 5-6 5-5 5-5 4-5 5-6 5-5 5-5 5-5 5-5 5-5 5-5 5-6 5-4 5-5 5-5 4-6 6-5 4-5h2v-1h-1 1l-101-1-100 1-100-1h-94l-2 1-6-3-5-5-5-5-2-3-1 1v-1l101 1 100-2 100 1h101 17l5-3 4-1 1-4-2-3-2-2h-101l-100-1h-100l-101 2-25-1h-5l-3-2-1-3 1-4 2-3 3-1h100l100 1h101 100 26 5l3-2 1-5-1-3-3-3-7-1h-100-101-100-101l-17-1-5 1-3-2-1-3v-5l3-3h2l101-1 100 2 101-1 85 1 1-1v-2l-5-5-5-5-4-5-100-1-101 1h-100-72l-6-1-3-2-1-4 1-4 2-1 3-2 100 1 101 1 100-1 86-1h5l2-2 2-3v-4l-2-3-3-2-82-1-3 1-1-1v1-1l5-5 5-5 5-6h1l46 1h5l4-3v-3-4l-2-2-4-2h-53-5l-4-3v-3l1-3 2-3 18-1 29 1 5-1 2-3 2-3-1-3-3-3-44-1h-2-1-1l5-5 4-5 5-6h1l27-1h6l3-2 1-3v-3l-2-3-5-2-3-2 1 2 1-3 3-6 2-4-1-1h-1 1v5 2l7 1h2l5-3 5-4 5-4 4-3h1l-18-1h-3l-5-4-5-5-6-5v-1h-1v1l16-1h2 1v1 5l-1 6v5l-1 5-1 5-1 6-2 5-4 5-4 5-5 5-5 5-5 5-5 5-5 5-5 4-5 5-6 5-5 5-5 5-5 5-6 4-5 4-3 6-4 5-6 1-5 1-5 1h-5l-6 1h-5-6-6-5-5l-5-1-6-1-5-1h-5l-5 4-5 4-4 1h-5l-6-1h-5l-5-2-6-2-5-2h-5-5-101l-47-1-5-1-4-1-1-4 1-4 2-2 4-1h100l25-1h3v1-1l-5-5-4-5-4-5-2-3h-100-17l-6-1-3-3-1-3 1-3 2-3 101-1h9l4 1v-1h-1l-5-5-5-5-4-5v-1h-97-5-6-1 1l-1 1h53 4l4-5 5-5 5-5-1-1h-58-5l-5-2-1-3v-3l2-3 4-2 54 1 5 1 3-3v-4l-1-3-2-2-12-2-32 1h-5l-3-3-1-3 1-3 2-3 18-2 5 1h6l3-2v-3l-1-4-3-3h-3-1l2 6 4 5 5 5 4 5 4 5 5 5 5 5 5 6 5 3 5 4 5 4 6 3 5 3 5 1h5 6l5-3 5-4 5-5 3-5 1-1 18-2 5 1 2 3 1 3v3l-3 3-11 1-6-1-4 2-1 3 1 4 2 3 3 2 1-1v1l-1-6v-6-5-5l-1-5v-5l1-6-1-5v-1l1-1 21-1h5l3-2v-3-3l-3-3h-18-5l-4-1h-1l5 1 5-1 6-1 5-2 5-2 5-5 5-4 1-1 6 1h5l5 1 5 1 5 1 5 1h6 5l5 1 26 1h5 4 1 1 1\" stroke-linejoin=\"round\" fill=\"none\"/>")
             
             // Real-time Trajectory Trail
             if trajectory.count > 1 {
                 let ptsStr = trajectory.map { "\($0.x),\($0.y)" }.joined(separator: " ")
-                svg.append("  <!-- Real-time Trajectory Trail -->")
                 svg.append("  <polyline id=\"trajectoryLine\" points=\"\(ptsStr)\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"0.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.9\"/>")
                 svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\(ptsStr)\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"0.35\" stroke-linecap=\"round\" stroke-dasharray=\"1 1\" opacity=\"0.9\"/>")
-            } else if !isCharging {
-                let defaultTrail = "5.66,-10.04 0,-10 -15,-10 -30,-8 -45,-5 -60,-8 -80,-12 -100,-15"
-                svg.append("  <polyline id=\"trajectoryLine\" points=\"\(defaultTrail)\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"0.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.9\"/>")
-                svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\(defaultTrail)\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"0.35\" stroke-linecap=\"round\" stroke-dasharray=\"1 1\" opacity=\"0.9\"/>")
             } else {
                 svg.append("  <polyline id=\"trajectoryLine\" points=\"\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"0.7\" stroke-linecap=\"round\" opacity=\"0.9\"/>")
                 svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"0.35\" stroke-linecap=\"round\" opacity=\"0.9\"/>")
             }
             
-            // Render Virtual Walls (Tường ảo)
+            // Virtual Walls
             for wall in virtualWalls {
-                svg.append("  <!-- Virtual Wall -->")
                 svg.append("  <line x1=\"\(wall.x1)\" y1=\"\(wall.y1)\" x2=\"\(wall.x2)\" y2=\"\(wall.y2)\" stroke=\"#ef4444\" stroke-width=\"1.2\" stroke-dasharray=\"2 1\" />")
             }
             
-            // Render Restricted Zones (Vùng cấm)
+            // Restricted Zones
             for zone in restrictedZones {
                 let stroke = zone.type == .noGo ? "#ef4444" : "#a855f7"
                 let fill = zone.type == .noGo ? "#7f1d1d" : "#581c87"
-                svg.append("  <!-- Restricted Zone: \(zone.name) -->")
                 svg.append("  <rect x=\"\(zone.x)\" y=\"\(zone.y)\" width=\"\(zone.width)\" height=\"\(zone.height)\" fill=\"\(fill)\" fill-opacity=\"0.35\" stroke=\"\(stroke)\" stroke-width=\"0.8\" stroke-dasharray=\"1 1\" />")
             }
             
-            // Charging Dock Station
-            svg.append("  <!-- Charging Dock Station -->")
+            // Charging Dock
             svg.append("  <g id=\"dockGroup\" transform=\"translate(\(dockX), \(dockY))\">")
             svg.append("    <use href=\"#d\" x=\"0\" y=\"0\"/>")
             svg.append("  </g>")
             
-            // Live Robot Position & Direction
-            svg.append("  <!-- Live Robot Position & Direction -->")
+            // Robot
             svg.append("  <g id=\"robotGroup\" transform=\"translate(\(rx), \(ry))\">")
             svg.append("    <use href=\"#c\" x=\"0\" y=\"0\"/>")
             svg.append("    <g id=\"robotHeading\" transform=\"rotate(\(angle))\">")
@@ -701,11 +715,78 @@ public final class EcovacsDeviceService {
             svg.append("  </g>")
             
             svg.append("</svg>")
-            return (svg.joined(separator: "\n"), viewBoxRect)
+            return (svg.joined(separator: "
+"), viewBoxRect)
+        } else {
+            // 2. Robot DEEBOT T10 TURBO (1e7dc98b) -> Nạp bản đồ LiDAR SLAM thực tế từ Hướng 2 DIY Backend
+            let viewBoxRect = CGRect(x: -153, y: -123, width: 186, height: 151)
+            let dockX = dockPos?.x ?? 26.36
+            let dockY = dockPos?.y ?? -55.24
+            let rx = robotPos?.x ?? (isCharging ? dockX : 26.32)
+            let ry = robotPos?.y ?? (isCharging ? dockY : -55.24)
+            let angle = robotPos?.a ?? (isCharging ? 180.0 : 0.0)
+            
+            var svg: [String] = []
+            svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-153 -123 186 151\">")
+            svg.append("  <defs>")
+            svg.append("    <radialGradient id=\"dbg\" cx=\"50%\" cy=\"50%\" r=\"50%\" fx=\"50%\" fy=\"50%\">")
+            svg.append("      <stop style=\"stop-color:#00f\" offset=\"70%\"/>")
+            svg.append("      <stop style=\"stop-color:#00f0\" offset=\"97%\"/>")
+            svg.append("    </radialGradient>")
+            svg.append("    <g id=\"d\">")
+            svg.append("      <circle r=\"5\" fill=\"url(#dbg)\"/>")
+            svg.append("      <circle stroke=\"white\" stroke-width=\"0.5\" r=\"3.5\" fill=\"blue\"/>")
+            svg.append("    </g>")
+            svg.append("    <g id=\"c\">")
+            svg.append("      <path d=\"M4-6.4C4-4.2 0 0 0 0s-4-4.2-4-6.4 1.8-4 4-4 4 1.8 4 4Z\" fill=\"#ffe605\"/>")
+            svg.append("      <circle cy=\"-6.4\" r=\"2.8\" fill=\"#fff\"/>")
+            svg.append("    </g>")
+            svg.append("  </defs>")
+            
+            // Authentic LiDAR SLAM Floorplan Bitmap
+            svg.append("  <image style=\"image-rendering: pixelated\" href=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALoAAACXBAMAAABQElwqAAAAFVBMVEUAAAC62v9OluLe6fvt8/u62v+62v8DMlgTAAAAAXRSTlMAQObYZgAAAsJJREFUeNrt2ktuwjAQBmALhPdBPgBJuUFPYGkOkA17b/D9j9CEQLEhD4/HvyAts0CqEn2Mx48aJ0ptFSe+WaEaZhzGvnM7pR9txYoDq6l1xdRZ7WTrNaedTVMDdbWpPvpHf6VuLDR3gurm06vldIvUDa1Xx1ZmoVdNwcocF/RgLSijR9sK4uv2t/YjerS2VEQSvZ7pdIPSL2i+Xs3r/T2X+wyVnE3moTepqE52up0lRmT8ZRnj3fwOuyU9p+4MnbJyT6xMOLfK1z1jzNgZ3UjrXk3r1IUNbyB27tGafTQXgIKwQa2letf2aFG0REE1jEDfN51Osf5YdoGu1PFp8gvHTJh7U3y8z61ac+M3R0fuOLC6WXHu/0lnnnIQ96TojXSL1A1Pb3h1Z+rMg7FZ3cRLXGG9IrJAPd4sfPQ/p3d7A5ze72u+yuoUbdHsF3Cu5ujz2xmpnj5mAJWpwLnTfUQi9OsN3f8NgH77HXXonwjBevX99PRNao6evpvJqsxy3B6UYfRD8BTxo4c/41G6uWyWQLoZzgtQudt++72H9upeoXSL1A1UJ2xlpvXoWX3dn8Tc/+AkP65HbxlswnceNk3qN/WTKdabZriS9mZGvXjQGevb70K6GY4mH/WhzWKd7GjunEh4eyPSVxa700lsaIfStVLO+8nLMl37SygHyX3AnfZK6+4P7d0D3orxMB71k6Azn/X+glO7drc7dR8S3esxvf883UPWoaPx7rpace6v089SfQ4P9Pb/6Qqrp/WqWp3ukQuBXNf+Zbk7GZ2We4vRz8K6zHfqjcfgV73F4Fcd0qVC3Xmgvpi5SPepeovBr9OphdQlW/eJcd4xde0Z4RTDZslP+/gSxXjax2PkVF2vWM8vjntt3fPLkqJ7qI7NfUg+aoIuO1V99HvapbZKdgyjy+uMHldQvsSpF1afHsMjF38AzcrXMX2Y1rMAAAAASUVORK5CYII=\" x=\"-153\" y=\"-123\" width=\"186\" height=\"151\"/>")
+            
+            // Real Clean Path trace from LiDAR SLAM
+            svg.append("  <path stroke=\"#ffffff\" stroke-width=\"1.2\" opacity=\"0.85\" vector-effect=\"non-scaling-stroke\" transform=\"scale(0.2 -0.2)\" d=\"M76 275l-4 1-1-1-1-1h1 2l5 2h5l6 1 5 1 4-2h-2l-2 1v5l1 5-2 6v5l1 5-3 6v2l3 1 5 4h5l5-1h6 5 5l1-1v3l-1 5-3 5v5l-2 1-5-2-2 5-4 4-1 5 1-1-5 1-5 2-6 1-3 5-5 4-1 6 1 5v5l-2 5v6l1 5 2 5 3 5 5 3 2 2 3 5 1 5 1 2v1 2 4l5-2 5 3 4 5 6 3h5l1 3v-5 2l-6 4 4-4v-5l-5-2h-5l-5 4-5 1-6 3 2 1h-1l1 5-5-4-5-2h1l-1-5-5-4-5-4-1-2v-5l-1-5-3-5-5-3h-5l-6-1h-5l-6 1-5 1-5-2-3 5-1 5 1-13v1-1 3l1-2-3 5 1-4v-2h1l-5 5-1-7v-1 1l-5-1h-5l-5 1-6 2-5 3-4 5-5 1v-8l-2 5 1-2-4 4-5 1-2 1h-5l-5 1-5 6-2 5-1 5 6-27v1-1 1l-4 5h5l-9-4h4\" stroke-linejoin=\"round\" fill=\"none\"/>")
+            
+            // Real-time Trajectory Trail
+            if trajectory.count > 1 {
+                let ptsStr = trajectory.map { "\($0.x),\($0.y)" }.joined(separator: " ")
+                svg.append("  <polyline id=\"trajectoryLine\" points=\"\(ptsStr)\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"0.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.9\"/>")
+                svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\(ptsStr)\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"0.35\" stroke-linecap=\"round\" stroke-dasharray=\"1 1\" opacity=\"0.9\"/>")
+            } else {
+                svg.append("  <polyline id=\"trajectoryLine\" points=\"\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"0.7\" stroke-linecap=\"round\" opacity=\"0.9\"/>")
+                svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"0.35\" stroke-linecap=\"round\" opacity=\"0.9\"/>")
+            }
+            
+            // Virtual Walls
+            for wall in virtualWalls {
+                svg.append("  <line x1=\"\(wall.x1)\" y1=\"\(wall.y1)\" x2=\"\(wall.x2)\" y2=\"\(wall.y2)\" stroke=\"#ef4444\" stroke-width=\"1.2\" stroke-dasharray=\"2 1\" />")
+            }
+            
+            // Restricted Zones
+            for zone in restrictedZones {
+                let stroke = zone.type == .noGo ? "#ef4444" : "#a855f7"
+                let fill = zone.type == .noGo ? "#7f1d1d" : "#581c87"
+                svg.append("  <rect x=\"\(zone.x)\" y=\"\(zone.y)\" width=\"\(zone.width)\" height=\"\(zone.height)\" fill=\"\(fill)\" fill-opacity=\"0.35\" stroke=\"\(stroke)\" stroke-width=\"0.8\" stroke-dasharray=\"1 1\" />")
+            }
+            
+            // Charging Dock
+            svg.append("  <g id=\"dockGroup\" transform=\"translate(\(dockX), \(dockY))\">")
+            svg.append("    <use href=\"#d\" x=\"0\" y=\"0\"/>")
+            svg.append("  </g>")
+            
+            // Robot
+            svg.append("  <g id=\"robotGroup\" transform=\"translate(\(rx), \(ry))\">")
+            svg.append("    <use href=\"#c\" x=\"0\" y=\"0\"/>")
+            svg.append("    <g id=\"robotHeading\" transform=\"rotate(\(angle))\">")
+            svg.append("    </g>")
+            svg.append("  </g>")
+            
+            svg.append("</svg>")
+            return (svg.joined(separator: "
+"), viewBoxRect)
         }
-        
-        // 2. Robot khác (Ví dụ DEEBOT T10 TURBO): Chưa có file SVG riêng, trả về rỗng để hiển thị giao diện quét Radar LiDAR độc lập, tuyệt đối không lấy đè bản đồ T9
-        return ("", CGRect(x: 0, y: 0, width: 800, height: 600))
     }
     
     // MARK: - 9. Nhật ký vệ sinh & Thống kê trọn đời (100% Ecovacs Cloud + Local Persistence)
