@@ -32,7 +32,7 @@ public struct SVGWebView: UIViewRepresentable {
         var lastRobotX: Double? = nil
         var lastRobotY: Double? = nil
         var lastRobotAngle: Double? = nil
-        var lastTrajectoryCount: Int = 0
+        var lastTrajectoryPointsStr: String = ""
         var isPageLoaded: Bool = false
         weak var webView: WKWebView?
         
@@ -44,6 +44,10 @@ public struct SVGWebView: UIViewRepresentable {
             if let x = lastRobotX, let y = lastRobotY {
                 let a = lastRobotAngle ?? 0.0
                 let js = "if(window.updateRobot){window.updateRobot(\(x), \(y), \(a));}"
+                webView.evaluateJavaScript(js, completionHandler: nil)
+            }
+            if !lastTrajectoryPointsStr.isEmpty {
+                let js = "if(window.updateTrajectory){window.updateTrajectory('\(lastTrajectoryPointsStr)');}"
                 webView.evaluateJavaScript(js, completionHandler: nil)
             }
         }
@@ -67,14 +71,14 @@ public struct SVGWebView: UIViewRepresentable {
     public func updateUIView(_ uiView: WKWebView, context: Context) {
         let coord = context.coordinator
         
-        // 1. Nếu bản đồ phòng SVG thay đổi: Nạp lại toàn bộ HTML
+        let ptsStr = trajectory.map { "\($0.x),\($0.y)" }.joined(separator: " ")
         if coord.lastLoadedSvg != svgString {
             coord.lastLoadedSvg = svgString
             coord.isPageLoaded = false
             coord.lastRobotX = robotX
             coord.lastRobotY = robotY
             coord.lastRobotAngle = robotAngle
-            coord.lastTrajectoryCount = trajectory.count
+            coord.lastTrajectoryPointsStr = ptsStr
             
             let htmlContent = """
             <!DOCTYPE html>
@@ -145,21 +149,20 @@ public struct SVGWebView: UIViewRepresentable {
                 coord.lastRobotY = y
                 coord.lastRobotAngle = robotAngle
                 let a = robotAngle ?? 0.0
-                let js = "window.updateRobot(\(x), \(y), \(a));"
+                let js = "if(window.updateRobot){window.updateRobot(\(x), \(y), \(a));}"
                 uiView.evaluateJavaScript(js, completionHandler: nil)
             }
             
-            if coord.lastTrajectoryCount != trajectory.count {
-                coord.lastTrajectoryCount = trajectory.count
-                let ptsStr = trajectory.map { "\($0.x),\($0.y)" }.joined(separator: " ")
-                let js = "window.updateTrajectory('\(ptsStr)');"
+            if coord.lastTrajectoryPointsStr != ptsStr {
+                coord.lastTrajectoryPointsStr = ptsStr
+                let js = "if(window.updateTrajectory){window.updateTrajectory('\(ptsStr)');}"
                 uiView.evaluateJavaScript(js, completionHandler: nil)
             }
         } else {
             coord.lastRobotX = robotX
             coord.lastRobotY = robotY
             coord.lastRobotAngle = robotAngle
-            coord.lastTrajectoryCount = trajectory.count
+            coord.lastTrajectoryPointsStr = ptsStr
         }
     }
 }

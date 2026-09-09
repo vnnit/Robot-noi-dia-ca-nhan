@@ -331,29 +331,42 @@ public final class RobotControlViewModel: ObservableObject {
         try await deviceService.deleteDevice(device: device)
     }
     
+    // MARK: - Chu kỳ làm mới trạng thái và vị trí tự động (Single Unified Sequential Polling Loop)
     private func startStatePolling() {
         stopStatePolling()
         pollingTask = Task { @MainActor [weak self] in
             var pollCounter = 0
             while !Task.isCancelled {
                 guard let self = self else { break }
-                let isBusy = self.state.cleanState == "clean" || self.state.cleanState == "pause" || self.state.cleanState == "go_charging"
-                let sleepSeconds: UInt64 = isBusy ? 4 : 8
-                try? await Task.sleep(nanoseconds: sleepSeconds * 1_000_000_000)
-                guard !Task.isCancelled else { break }
                 
                 // Nhường kết nối cho các lệnh điều khiển tức thì của người dùng
                 if Date() < self.pausePollingUntil {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
                     continue
                 }
                 
                 pollCounter += 1
-                let shouldFull = (pollCounter % 4 == 0)
+                let isMoving = self.state.cleanState == "clean" || self.state.cleanState == "go_charging"
+                
+                // 1. Cập nhật trạng thái máy (chỉ gọi getBattery/getChargeState mỗi 8 chu kỳ ~ 24s để giảm 80% tải gateway)
+                let shouldFull = (pollCounter % 8 == 0)
                 await self.refreshState(full: shouldFull)
+                
+                // 2. Khi robot đang hoạt động: cập nhật tọa độ & vẽ quỹ đạo thời gian thực
+                if isMoving {
+                    await self.refreshLivePositionAndTrajectory()
+                    if self.state.cleanState == "clean" {
+                        self.state.cleanDurationSec += 3
+                    }
+                }
                 
                 if self.svgMap == nil {
                     await self.refreshMap()
                 }
+                
+                // 3. Nghỉ ngơi giữa các chu kỳ: 3s khi đang dọn dẹp di chuyển, 8s khi nghỉ/sạc
+                let sleepSeconds: UInt64 = isMoving ? 3 : 8
+                try? await Task.sleep(nanoseconds: sleepSeconds * 1_000_000_000)
             }
         }
     }
@@ -363,39 +376,13 @@ public final class RobotControlViewModel: ObservableObject {
         pollingTask = nil
     }
     
-    // MARK: - Theo dõi Vị trí Robot trên Bản đồ Thời gian thực (2 giây/lần khi đang dọn dẹp)
+    // MARK: - Theo dõi Vị trí Robot trên Bản đồ Thời gian thực (Tích hợp chu kỳ thống nhất)
     public func startLiveMapTracking() {
-        stopLiveMapTracking()
-        liveMapTrackingTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                guard let self = self else { break }
-                
-                // CHỈ TỰ ĐỘNG LÀM MỚI VỊ TRÍ 2S/LẦN KHI ROBOT ĐANG HOẠT ĐỘNG (dọn dẹp hoặc đang về sạc)
-                // Khi robot đang sạc hoặc nghỉ ngơi thì nghỉ ngơi, tuyệt đối không gửi lệnh gây tốn pin và nghẽn gateway
-                let isMoving = self.state.cleanState == "clean" || self.state.cleanState == "go_charging"
-                
-                if !isMoving {
-                    try? await Task.sleep(nanoseconds: 2_500_000_000)
-                    continue
-                }
-                
-                // Chu kỳ quét mượt mà đúng 2.0 giây
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                guard !Task.isCancelled else { break }
-                
-                // Nhường băng thông nếu người dùng vừa ấn nút điều khiển
-                if Date() < self.pausePollingUntil {
-                    continue
-                }
-                
-                await self.refreshLivePositionAndTrajectory()
-            }
-        }
+        startStatePolling()
     }
     
     public func stopLiveMapTracking() {
-        liveMapTrackingTask?.cancel()
-        liveMapTrackingTask = nil
+        // Giữ tương thích interface
     }
     
     // MARK: - Tọa độ & Quỹ đạo thời gian thực (Real-time Live Trajectory)
@@ -411,6 +398,9 @@ public final class RobotControlViewModel: ObservableObject {
     }
     
     private func recordNewRobotPosition(x: Double, y: Double, angle: Double) {
+        // Nếu tọa độ là (0, 0) mà robot đang dọn dẹp, bỏ qua không ghi nhận tọa độ ảo
+        if x == 0 && y == 0 { return }
+        
         self.state.robotX = x
         self.state.robotY = y
         self.state.robotAngle = angle
@@ -816,6 +806,13 @@ public final class RobotControlViewModel: ObservableObject {
     }
     
     // MARK: - Map Realtime (100% Zero-Server via Ecovacs Cloud getMajorMap)
+    public func manualRefreshMap() async {
+        isMapLoading = true
+        await refreshLivePositionAndTrajectory()
+        await refreshMap()
+        isMapLoading = false
+    }
+    
     public func refreshMap() async {
         isMapLoading = true
         let mapResult = await deviceService.getSvgMapWithDetails(

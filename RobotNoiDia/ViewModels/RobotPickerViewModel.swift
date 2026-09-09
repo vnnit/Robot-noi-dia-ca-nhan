@@ -47,14 +47,6 @@ public final class RobotPickerViewModel: ObservableObject {
                     self.errorMessage = "Chưa tìm thấy robot nào trong tài khoản."
                 }
                 
-                for dev in fetched {
-                    NotificationManager.shared.notifyQuickStatusChange(
-                        device: dev,
-                        battery: dev.battery,
-                        isCharging: dev.isCharging,
-                        cleanState: dev.cleanState
-                    )
-                }
                 
                 // Lưu lại cache
                 self.deviceService.saveCachedDevices(self.devices)
@@ -96,14 +88,7 @@ public final class RobotPickerViewModel: ObservableObject {
                 guard let self = self else { return }
                 if let updated = try? await self.deviceService.fetchDevices(forceRefreshAuth: false) {
                     self.devices = updated
-                    for dev in updated {
-                        NotificationManager.shared.notifyQuickStatusChange(
-                            device: dev,
-                            battery: dev.battery,
-                            isCharging: dev.isCharging,
-                            cleanState: dev.cleanState
-                        )
-                    }
+
                     self.deviceService.saveCachedDevices(updated)
                 }
             }

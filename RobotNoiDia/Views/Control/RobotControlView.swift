@@ -288,9 +288,13 @@ public struct RobotControlView: View {
             Spacer().frame(height: 105)
             
             Button(action: {
-                Task { await viewModel.refreshMap() }
-                viewModel.toastMessage = "Đang quét lại bản đồ..."
+                HapticManager.shared.light()
+                viewModel.toastMessage = "Đang quét vị trí và bản đồ..."
                 viewModel.showToast = true
+                Task {
+                    await viewModel.manualRefreshMap()
+                    viewModel.showToastNotification("Đã cập nhật bản đồ mới nhất")
+                }
             }) {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 16, weight: .semibold))
@@ -553,9 +557,13 @@ public struct RobotControlView: View {
                 }
                 
                 Button(action: {
-                    Task { await viewModel.refreshMap() }
-                    viewModel.toastMessage = "Đang quét lại bản đồ..."
+                    HapticManager.shared.light()
+                    viewModel.toastMessage = "Đang quét vị trí và bản đồ..."
                     viewModel.showToast = true
+                    Task {
+                        await viewModel.manualRefreshMap()
+                        viewModel.showToastNotification("Đã cập nhật bản đồ mới nhất")
+                    }
                 }) {
                     HStack(spacing: 3) {
                         Image(systemName: "arrow.clockwise")

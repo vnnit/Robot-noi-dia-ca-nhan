@@ -86,6 +86,12 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
     private var lastDustbinFullPerDevice: [String: Bool] = [:]
     private var lastNotificationTimestamps: [String: [String: Date]] = [:]
     
+    // Cờ kiểm soát từng phiên làm việc: Đảm bảo "Bắt đầu dọn", "Về sạc", "Đã dừng" chỉ nổ đúng 1 lần duy nhất trong toàn bộ phiên
+    private var hasNotifiedCleanStartPerDevice: [String: Bool] = [:]
+    private var hasNotifiedPausePerDevice: [String: Bool] = [:]
+    private var hasNotifiedGoChargingPerDevice: [String: Bool] = [:]
+    private var hasNotifiedDockedPerDevice: [String: Bool] = [:]
+    
     // Serial Queue xử lý đồng bộ tránh xung đột đa luồng
     private let stateQueue = DispatchQueue(label: "com.robotnoidia.notification.stateQueue")
     
@@ -98,7 +104,7 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
         stateQueue.async { [weak self] in
             guard let self = self else { return }
             
-            // 1. Theo dõi tiến độ dọn dẹp (Clean State)
+            // 1. Theo dõi tiến độ dọn dẹp (Clean State) theo Session State Machine
             if let rawState = cleanState?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !rawState.isEmpty {
                 let currentCleanState = rawState
                 let prevState = self.lastCleanStatePerDevice[did]
@@ -106,63 +112,94 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
                 // Khởi tạo trạng thái ban đầu khi mở app: ghi nhận mốc nền mà không spam thông báo giả
                 guard let previous = prevState else {
                     self.lastCleanStatePerDevice[did] = currentCleanState
+                    if currentCleanState == "clean" {
+                        // Nếu khi mở app robot đã đang chạy, đánh dấu đã thông báo để không bao giờ spam lại
+                        self.hasNotifiedCleanStartPerDevice[did] = true
+                    } else if currentCleanState == "charging" {
+                        self.hasNotifiedDockedPerDevice[did] = true
+                    }
                     return
                 }
                 
-                // Chỉ gửi thông báo khi robot THỰC SỰ CHUYỂN TRẠNG THÁI
-                if currentCleanState != previous {
-                    let now = Date()
-                    let lastSent = self.lastNotificationTimestamps[did]?[currentCleanState]
-                    let interval = now.timeIntervalSince(lastSent ?? Date.distantPast)
+                switch currentCleanState {
+                case "clean":
+                    let alreadyStarted = self.hasNotifiedCleanStartPerDevice[did] ?? false
+                    let isResumingFromPause = (previous == "pause") || (self.hasNotifiedPausePerDevice[did] ?? false)
                     
-                    // Khoảng cách tối thiểu 15 giây giữa 2 thông báo cùng loại để tránh giật lag mạng
-                    if interval >= 15.0 {
-                        if self.lastNotificationTimestamps[did] == nil {
-                            self.lastNotificationTimestamps[did] = [:]
-                        }
-                        self.lastNotificationTimestamps[did]?[currentCleanState] = now
-                        
-                        switch currentCleanState {
-                        case "clean":
-                            if previous == "pause" {
-                                self.sendNotification(
-                                    title: "▶️ \(devName) tiếp tục dọn dẹp",
-                                    body: "Robot đã tiếp tục công việc hút bụi / lau nhà."
-                                )
-                            } else {
-                                self.sendNotification(
-                                    title: "🧹 \(devName) bắt đầu dọn dẹp",
-                                    body: "\(devName) đã rời trạm sạc và bắt đầu dọn dẹp tự động."
-                                )
-                            }
-                        case "pause":
-                            self.sendNotification(
-                                title: "⏸ \(devName) tạm dừng dọn",
-                                body: "Robot đang tạm dừng dọn dẹp."
-                            )
-                        case "go_charging":
-                            self.sendNotification(
-                                title: "🔋 \(devName) đang về trạm sạc",
-                                body: "Robot đã hoàn thành dọn dẹp và đang quay về trạm sạc."
-                            )
-                        case "charging":
-                            if previous == "go_charging" || previous == "clean" || previous == "pause" {
-                                self.sendNotification(
-                                    title: "⚡️ \(devName) đã về trạm sạc",
-                                    body: "Robot đã cập bến trạm sạc an toàn và đang nạp pin."
-                                )
-                            }
-                        case "stop":
-                            self.sendNotification(
-                                title: "⏹ \(devName) đã dừng dọn",
-                                body: "Phiên dọn dẹp của robot đã kết thúc."
-                            )
-                        default:
-                            break
-                        }
+                    if !alreadyStarted {
+                        // BẮT ĐẦU PHIÊN DỌN MỚI: BÁO ĐÚNG 1 LẦN DUY NHẤT
+                        self.sendNotification(
+                            title: "🧹 \(devName) bắt đầu dọn dẹp",
+                            body: "\(devName) đã rời trạm sạc và bắt đầu dọn dẹp tự động."
+                        )
+                        self.hasNotifiedCleanStartPerDevice[did] = true
+                        self.hasNotifiedPausePerDevice[did] = false
+                        self.hasNotifiedGoChargingPerDevice[did] = false
+                        self.hasNotifiedDockedPerDevice[did] = false
+                    } else if isResumingFromPause {
+                        // TIẾP TỤC SAU KHI TẠM DỪNG: BÁO ĐÚNG 1 LẦN
+                        self.sendNotification(
+                            title: "▶️ \(devName) tiếp tục dọn dẹp",
+                            body: "Robot đã tiếp tục công việc hút bụi / lau nhà."
+                        )
+                        self.hasNotifiedPausePerDevice[did] = false
                     }
-                    self.lastCleanStatePerDevice[did] = currentCleanState
+                    // Nếu đã dọn dẹp liên tục: TUYỆT ĐỐI KHÔNG GỬI THÔNG BÁO GÌ CẢ
+                    
+                case "pause":
+                    let alreadyPaused = self.hasNotifiedPausePerDevice[did] ?? false
+                    if !alreadyPaused && (self.hasNotifiedCleanStartPerDevice[did] ?? false) {
+                        self.sendNotification(
+                            title: "⏸ \(devName) tạm dừng dọn",
+                            body: "Robot đang tạm dừng dọn dẹp."
+                        )
+                        self.hasNotifiedPausePerDevice[did] = true
+                    }
+                    
+                case "go_charging":
+                    let alreadyGoCharging = self.hasNotifiedGoChargingPerDevice[did] ?? false
+                    if !alreadyGoCharging {
+                        self.sendNotification(
+                            title: "🔋 \(devName) đang về trạm sạc",
+                            body: "Robot đã hoàn thành dọn dẹp và đang quay về trạm sạc."
+                        )
+                        self.hasNotifiedGoChargingPerDevice[did] = true
+                    }
+                    
+                case "charging":
+                    let alreadyDocked = self.hasNotifiedDockedPerDevice[did] ?? false
+                    let wasInSession = (self.hasNotifiedCleanStartPerDevice[did] ?? false) || (self.hasNotifiedGoChargingPerDevice[did] ?? false) || (previous == "go_charging")
+                    
+                    if !alreadyDocked && wasInSession {
+                        self.sendNotification(
+                            title: "⚡️ \(devName) đã về trạm sạc",
+                            body: "Robot đã cập bến trạm sạc an toàn và đang nạp pin."
+                        )
+                        self.hasNotifiedDockedPerDevice[did] = true
+                    }
+                    // Reset cờ phiên dọn dẹp cho lần hoạt động tiếp theo
+                    self.hasNotifiedCleanStartPerDevice[did] = false
+                    self.hasNotifiedPausePerDevice[did] = false
+                    self.hasNotifiedGoChargingPerDevice[did] = false
+                    
+                case "stop":
+                    let wasCleaning = (self.hasNotifiedCleanStartPerDevice[did] ?? false)
+                    if wasCleaning && previous != "stop" {
+                        self.sendNotification(
+                            title: "⏹ \(devName) đã dừng dọn",
+                            body: "Phiên dọn dẹp của robot đã kết thúc."
+                        )
+                    }
+                    // Reset cờ phiên
+                    self.hasNotifiedCleanStartPerDevice[did] = false
+                    self.hasNotifiedPausePerDevice[did] = false
+                    self.hasNotifiedGoChargingPerDevice[did] = false
+                    
+                default:
+                    break
                 }
+                
+                self.lastCleanStatePerDevice[did] = currentCleanState
             }
             
             // 2. Theo dõi Pin yếu (< 15%) - Chỉ báo 1 lần duy nhất khi pin tụt dưới 15%

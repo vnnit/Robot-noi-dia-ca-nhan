@@ -319,9 +319,7 @@ public final class EcovacsDeviceService {
                 "ver": "0.0.50"
             ]
         ]
-        if !payloadArgs.isEmpty {
-            innerPayload["body"] = ["data": payloadArgs]
-        }
+        innerPayload["body"] = ["data": payloadArgs]
         
         let body: [String: Any] = [
             "cmdName": cmdName,
@@ -703,28 +701,47 @@ public final class EcovacsDeviceService {
         var dock: (x: Double, y: Double)? = nil
         
         // deebotPos
-        if let dPos = body["deebotPos"] as? [String: Any] {
-            let x = (dPos["x"] as? NSNumber)?.doubleValue ?? 0.0
-            let y = (dPos["y"] as? NSNumber)?.doubleValue ?? 0.0
+        let extractRobotPos: ([String: Any]) -> (x: Double, y: Double, a: Double)? = { dPos in
+            let invalid = (dPos["invalid"] as? Int) ?? 0
+            let rawX = (dPos["x"] as? NSNumber)?.doubleValue ?? 0.0
+            let rawY = (dPos["y"] as? NSNumber)?.doubleValue ?? 0.0
             let a = (dPos["a"] as? NSNumber)?.doubleValue ?? 0.0
-            robot = (x, y, a)
+            
+            // Nếu invalid == 1 và tọa độ là (0, 0) thì robot chưa định vị hoặc đang ngủ -> bỏ qua
+            if invalid == 1 && rawX == 0 && rawY == 0 {
+                return nil
+            }
+            
+            // Nếu tọa độ từ vi điều khiển gửi về dạng mm thô (lớn hơn 150), quy đổi về đơn vị pixel viewBox SVG (chia cho 50 mm/pixel)
+            let x = (abs(rawX) > 150) ? (rawX / 50.0) : rawX
+            let y = (abs(rawY) > 150) ? (rawY / 50.0) : rawY
+            return (x, y, a)
+        }
+        
+        if let dPos = body["deebotPos"] as? [String: Any] {
+            robot = extractRobotPos(dPos)
         } else if let dArr = body["deebotPos"] as? [[String: Any]], let first = dArr.first {
-            let x = (first["x"] as? NSNumber)?.doubleValue ?? 0.0
-            let y = (first["y"] as? NSNumber)?.doubleValue ?? 0.0
-            let a = (first["a"] as? NSNumber)?.doubleValue ?? 0.0
-            robot = (x, y, a)
+            robot = extractRobotPos(first)
         }
         
         // chargePos / chargerPos
+        let extractDockPos: ([String: Any]) -> (x: Double, y: Double)? = { cPos in
+            let invalid = (cPos["invalid"] as? Int) ?? 0
+            let rawX = (cPos["x"] as? NSNumber)?.doubleValue ?? 0.0
+            let rawY = (cPos["y"] as? NSNumber)?.doubleValue ?? 0.0
+            if invalid == 1 && rawX == 0 && rawY == 0 {
+                return nil
+            }
+            let x = (abs(rawX) > 150) ? (rawX / 50.0) : rawX
+            let y = (abs(rawY) > 150) ? (rawY / 50.0) : rawY
+            return (x, y)
+        }
+        
         let cDict = (body["chargePos"] as? [String: Any]) ?? (body["chargerPos"] as? [String: Any])
         if let cPos = cDict {
-            let x = (cPos["x"] as? NSNumber)?.doubleValue ?? 0.0
-            let y = (cPos["y"] as? NSNumber)?.doubleValue ?? 0.0
-            dock = (x, y)
+            dock = extractDockPos(cPos)
         } else if let cArr = (body["chargePos"] as? [[String: Any]]) ?? (body["chargerPos"] as? [[String: Any]]), let first = cArr.first {
-            let x = (first["x"] as? NSNumber)?.doubleValue ?? 0.0
-            let y = (first["y"] as? NSNumber)?.doubleValue ?? 0.0
-            dock = (x, y)
+            dock = extractDockPos(first)
         }
         
         return (robot, dock)
@@ -837,12 +854,12 @@ public final class EcovacsDeviceService {
         virtualWalls: [VirtualWall] = [],
         restrictedZones: [RestrictedZone] = []
     ) async -> MapResult {
-        // 1. Lấy tọa độ nếu chưa có
+        // 1. Lấy tọa độ nếu chưa có hoặc nếu tọa độ đang là (0, 0)
         var pos = currentPos
         var dock = currentDock
-        if pos == nil || dock == nil {
+        if pos == nil || dock == nil || (pos?.x == 0 && pos?.y == 0) {
             let fetched = await getPosition(device: device)
-            if pos == nil { pos = fetched.robotPos }
+            if pos == nil || (pos?.x == 0 && pos?.y == 0) { pos = fetched.robotPos }
             if dock == nil { dock = fetched.dockPos }
         }
         
@@ -928,9 +945,18 @@ public final class EcovacsDeviceService {
             let viewBoxRect = CGRect(x: -212, y: -17, width: 271, height: 96)
             let dockX = dockPos?.x ?? 5.66
             let dockY = dockPos?.y ?? -10.08
-            let rx = robotPos?.x ?? (isCharging ? dockX : 5.60)
-            let ry = robotPos?.y ?? (isCharging ? dockY : -10.06)
-            let angle = robotPos?.a ?? (isCharging ? 180.0 : 0.0)
+            let rx: Double
+            let ry: Double
+            let angle: Double
+            if let p = robotPos, (p.x != 0 || p.y != 0) {
+                rx = p.x
+                ry = p.y
+                angle = p.a
+            } else {
+                rx = isCharging ? dockX : 5.60
+                ry = isCharging ? dockY : -10.06
+                angle = isCharging ? 180.0 : 0.0
+            }
             
             var svg: [String] = []
             svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-212 -17 271 96\">")
@@ -984,8 +1010,8 @@ public final class EcovacsDeviceService {
             
             // Robot
             svg.append("  <g id=\"robotGroup\" transform=\"translate(\(rx), \(ry))\">")
-            svg.append("    <use href=\"#c\" x=\"0\" y=\"0\"/>")
             svg.append("    <g id=\"robotHeading\" transform=\"rotate(\(angle))\">")
+            svg.append("      <use href=\"#c\" x=\"0\" y=\"0\"/>")
             svg.append("    </g>")
             svg.append("  </g>")
             
@@ -996,9 +1022,18 @@ public final class EcovacsDeviceService {
             let viewBoxRect = CGRect(x: -153, y: -123, width: 186, height: 151)
             let dockX = dockPos?.x ?? 26.36
             let dockY = dockPos?.y ?? -55.24
-            let rx = robotPos?.x ?? (isCharging ? dockX : 26.32)
-            let ry = robotPos?.y ?? (isCharging ? dockY : -55.24)
-            let angle = robotPos?.a ?? (isCharging ? 180.0 : 0.0)
+            let rx: Double
+            let ry: Double
+            let angle: Double
+            if let p = robotPos, (p.x != 0 || p.y != 0) {
+                rx = p.x
+                ry = p.y
+                angle = p.a
+            } else {
+                rx = isCharging ? dockX : 26.32
+                ry = isCharging ? dockY : -55.24
+                angle = isCharging ? 180.0 : 0.0
+            }
             
             var svg: [String] = []
             svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-153 -123 186 151\">")
@@ -1052,8 +1087,8 @@ public final class EcovacsDeviceService {
             
             // Robot
             svg.append("  <g id=\"robotGroup\" transform=\"translate(\(rx), \(ry))\">")
-            svg.append("    <use href=\"#c\" x=\"0\" y=\"0\"/>")
             svg.append("    <g id=\"robotHeading\" transform=\"rotate(\(angle))\">")
+            svg.append("      <use href=\"#c\" x=\"0\" y=\"0\"/>")
             svg.append("    </g>")
             svg.append("  </g>")
             
