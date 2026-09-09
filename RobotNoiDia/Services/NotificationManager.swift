@@ -91,9 +91,31 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
     private var hasNotifiedPausePerDevice: [String: Bool] = [:]
     private var hasNotifiedGoChargingPerDevice: [String: Bool] = [:]
     private var hasNotifiedDockedPerDevice: [String: Bool] = [:]
+    private var lastNotificationTimePerDevice: [String: Date] = [:]
+    private var sessionStartTimePerDevice: [String: Date] = [:]
     
     // Serial Queue xử lý đồng bộ tránh xung đột đa luồng
     private let stateQueue = DispatchQueue(label: "com.robotnoidia.notification.stateQueue")
+    
+    private func canSendNotification(for did: String, eventType: String, minInterval: TimeInterval = 12.0) -> Bool {
+        let now = Date()
+        if let lastGlobal = lastNotificationTimePerDevice[did], now.timeIntervalSince(lastGlobal) < minInterval {
+            return false
+        }
+        if let lastSpecific = lastNotificationTimestamps[did]?[eventType], now.timeIntervalSince(lastSpecific) < 45.0 {
+            return false
+        }
+        return true
+    }
+    
+    private func recordNotificationSent(for did: String, eventType: String) {
+        let now = Date()
+        lastNotificationTimePerDevice[did] = now
+        if lastNotificationTimestamps[did] == nil {
+            lastNotificationTimestamps[did] = [:]
+        }
+        lastNotificationTimestamps[did]?[eventType] = now
+    }
     
     public func notifyQuickStatusChange(device: DeviceModel, battery: Int?, isCharging: Bool?, cleanState: String?) {
         guard isEnabled else { return }
@@ -115,6 +137,7 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
                     if currentCleanState == "clean" {
                         // Nếu khi mở app robot đã đang chạy, đánh dấu đã thông báo để không bao giờ spam lại
                         self.hasNotifiedCleanStartPerDevice[did] = true
+                        self.sessionStartTimePerDevice[did] = Date()
                     } else if currentCleanState == "charging" {
                         self.hasNotifiedDockedPerDevice[did] = true
                     }
@@ -128,67 +151,92 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
                     
                     if !alreadyStarted {
                         // BẮT ĐẦU PHIÊN DỌN MỚI: BÁO ĐÚNG 1 LẦN DUY NHẤT
-                        self.sendNotification(
-                            title: "🧹 \(devName) bắt đầu dọn dẹp",
-                            body: "\(devName) đã rời trạm sạc và bắt đầu dọn dẹp tự động."
-                        )
-                        self.hasNotifiedCleanStartPerDevice[did] = true
-                        self.hasNotifiedPausePerDevice[did] = false
-                        self.hasNotifiedGoChargingPerDevice[did] = false
-                        self.hasNotifiedDockedPerDevice[did] = false
+                        if self.canSendNotification(for: did, eventType: "clean_start", minInterval: 15.0) {
+                            self.sendNotification(
+                                title: "🧹 \(devName) bắt đầu dọn dẹp",
+                                body: "\(devName) đã rời trạm sạc và bắt đầu dọn dẹp tự động."
+                            )
+                            self.recordNotificationSent(for: did, eventType: "clean_start")
+                            self.sessionStartTimePerDevice[did] = Date()
+                            self.hasNotifiedCleanStartPerDevice[did] = true
+                            self.hasNotifiedPausePerDevice[did] = false
+                            self.hasNotifiedGoChargingPerDevice[did] = false
+                            self.hasNotifiedDockedPerDevice[did] = false
+                        }
                     } else if isResumingFromPause {
                         // TIẾP TỤC SAU KHI TẠM DỪNG: BÁO ĐÚNG 1 LẦN
-                        self.sendNotification(
-                            title: "▶️ \(devName) tiếp tục dọn dẹp",
-                            body: "Robot đã tiếp tục công việc hút bụi / lau nhà."
-                        )
-                        self.hasNotifiedPausePerDevice[did] = false
+                        if self.canSendNotification(for: did, eventType: "clean_resume", minInterval: 15.0) {
+                            self.sendNotification(
+                                title: "▶️ \(devName) tiếp tục dọn dẹp",
+                                body: "Robot đã tiếp tục công việc hút bụi / lau nhà."
+                            )
+                            self.recordNotificationSent(for: did, eventType: "clean_resume")
+                            self.hasNotifiedPausePerDevice[did] = false
+                        }
                     }
                     // Nếu đã dọn dẹp liên tục: TUYỆT ĐỐI KHÔNG GỬI THÔNG BÁO GÌ CẢ
                     
                 case "pause":
                     let alreadyPaused = self.hasNotifiedPausePerDevice[did] ?? false
                     if !alreadyPaused && (self.hasNotifiedCleanStartPerDevice[did] ?? false) {
-                        self.sendNotification(
-                            title: "⏸ \(devName) tạm dừng dọn",
-                            body: "Robot đang tạm dừng dọn dẹp."
-                        )
-                        self.hasNotifiedPausePerDevice[did] = true
+                        if self.canSendNotification(for: did, eventType: "pause", minInterval: 15.0) {
+                            self.sendNotification(
+                                title: "⏸ \(devName) tạm dừng dọn",
+                                body: "Robot đang tạm dừng dọn dẹp."
+                            )
+                            self.recordNotificationSent(for: did, eventType: "pause")
+                            self.hasNotifiedPausePerDevice[did] = true
+                        }
                     }
                     
                 case "go_charging":
                     let alreadyGoCharging = self.hasNotifiedGoChargingPerDevice[did] ?? false
                     if !alreadyGoCharging {
-                        self.sendNotification(
-                            title: "🔋 \(devName) đang về trạm sạc",
-                            body: "Robot đã hoàn thành dọn dẹp và đang quay về trạm sạc."
-                        )
-                        self.hasNotifiedGoChargingPerDevice[did] = true
+                        if self.canSendNotification(for: did, eventType: "go_charging", minInterval: 15.0) {
+                            self.sendNotification(
+                                title: "🔋 \(devName) đang về trạm sạc",
+                                body: "Robot đã hoàn thành dọn dẹp và đang quay về trạm sạc."
+                            )
+                            self.recordNotificationSent(for: did, eventType: "go_charging")
+                            self.hasNotifiedGoChargingPerDevice[did] = true
+                        }
                     }
                     
                 case "charging":
                     let alreadyDocked = self.hasNotifiedDockedPerDevice[did] ?? false
                     let wasInSession = (self.hasNotifiedCleanStartPerDevice[did] ?? false) || (self.hasNotifiedGoChargingPerDevice[did] ?? false) || (previous == "go_charging")
+                    let isTrulyCharging = isCharging ?? false
                     
-                    if !alreadyDocked && wasInSession {
-                        self.sendNotification(
-                            title: "⚡️ \(devName) đã về trạm sạc",
-                            body: "Robot đã cập bến trạm sạc an toàn và đang nạp pin."
-                        )
-                        self.hasNotifiedDockedPerDevice[did] = true
+                    let sessionDuration = Date().timeIntervalSince(self.sessionStartTimePerDevice[did] ?? Date())
+                    // Chỉ báo về sạc khi thực sự có sạc pin VÀ đã qua ít nhất 20s kể từ lúc bắt đầu dọn hoặc previous là go_charging
+                    let isLegitimateDocking = isTrulyCharging && (previous == "go_charging" || sessionDuration >= 20.0)
+                    
+                    if !alreadyDocked && wasInSession && isLegitimateDocking {
+                        if self.canSendNotification(for: did, eventType: "charging", minInterval: 15.0) {
+                            self.sendNotification(
+                                title: "⚡️ \(devName) đã về trạm sạc",
+                                body: "Robot đã cập bến trạm sạc an toàn và đang nạp pin."
+                            )
+                            self.recordNotificationSent(for: did, eventType: "charging")
+                            self.hasNotifiedDockedPerDevice[did] = true
+                            
+                            // Reset cờ phiên dọn dẹp sau khi đã docking thành công
+                            self.hasNotifiedCleanStartPerDevice[did] = false
+                            self.hasNotifiedPausePerDevice[did] = false
+                            self.hasNotifiedGoChargingPerDevice[did] = false
+                        }
                     }
-                    // Reset cờ phiên dọn dẹp cho lần hoạt động tiếp theo
-                    self.hasNotifiedCleanStartPerDevice[did] = false
-                    self.hasNotifiedPausePerDevice[did] = false
-                    self.hasNotifiedGoChargingPerDevice[did] = false
                     
                 case "stop":
                     let wasCleaning = (self.hasNotifiedCleanStartPerDevice[did] ?? false)
                     if wasCleaning && previous != "stop" {
-                        self.sendNotification(
-                            title: "⏹ \(devName) đã dừng dọn",
-                            body: "Phiên dọn dẹp của robot đã kết thúc."
-                        )
+                        if self.canSendNotification(for: did, eventType: "stop", minInterval: 15.0) {
+                            self.sendNotification(
+                                title: "⏹ \(devName) đã dừng dọn",
+                                body: "Phiên dọn dẹp của robot đã kết thúc."
+                            )
+                            self.recordNotificationSent(for: did, eventType: "stop")
+                        }
                     }
                     // Reset cờ phiên
                     self.hasNotifiedCleanStartPerDevice[did] = false

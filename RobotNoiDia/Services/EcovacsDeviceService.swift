@@ -358,7 +358,11 @@ public final class EcovacsDeviceService {
                 "ver": "0.0.50"
             ]
         ]
-        innerPayload["body"] = ["data": payloadArgs]
+        if cmdName == "getPos" {
+            innerPayload["body"] = ["data": ["chargePos", "deebotPos"]]
+        } else {
+            innerPayload["body"] = ["data": payloadArgs]
+        }
         
         let body: [String: Any] = [
             "cmdName": cmdName,
@@ -432,13 +436,15 @@ public final class EcovacsDeviceService {
             if motionState == "pause" || rawState == "pause" {
                 cleanState = "pause"
                 cleanStateText = "Đang tạm dừng"
-            } else if rawState == "clean" && (motionState == "clean" || motionState == "working" || motionState == nil) {
+            } else if rawState == "clean" || motionState == "clean" || motionState == "working" {
                 cleanState = "clean"
                 cleanStateText = "Đang dọn dẹp"
+                isCharging = false
             } else if rawState == "go_charging" || motionState == "go_charging" {
                 cleanState = "go_charging"
                 cleanStateText = "Đang về trạm sạc"
-            } else if rawState == "charging" || motionState == "charging" || isCharging == true {
+                isCharging = false
+            } else if rawState == "charging" || motionState == "charging" {
                 cleanState = "charging"
                 cleanStateText = "Đang sạc tại trạm"
                 isCharging = true
@@ -446,12 +452,9 @@ public final class EcovacsDeviceService {
                 cleanState = "stop"
                 cleanStateText = "Đã dừng dọn"
             } else {
-                cleanState = isCharging == true ? "charging" : "idle"
-                cleanStateText = isCharging == true ? "Đang sạc tại trạm" : "Nghỉ ngơi / Chờ lệnh"
+                cleanState = (isCharging == true) ? "charging" : "idle"
+                cleanStateText = (isCharging == true) ? "Đang sạc tại trạm" : "Nghỉ ngơi / Chờ lệnh"
             }
-        } else if isCharging == true {
-            cleanState = "charging"
-            cleanStateText = "Đang sạc tại trạm"
         }
         
         return (true, battery, isCharging, cleanState, cleanStateText)
@@ -514,13 +517,15 @@ public final class EcovacsDeviceService {
             if motionState == "pause" || rawState == "pause" {
                 state.cleanState = "pause"
                 state.cleanStateText = "Đang tạm dừng"
-            } else if rawState == "clean" && (motionState == "clean" || motionState == "working" || motionState == nil) {
+            } else if rawState == "clean" || motionState == "clean" || motionState == "working" {
                 state.cleanState = "clean"
                 state.cleanStateText = "Đang dọn dẹp"
+                state.isCharging = false
             } else if rawState == "go_charging" || motionState == "go_charging" {
                 state.cleanState = "go_charging"
                 state.cleanStateText = "Đang về trạm sạc"
-            } else if rawState == "charging" || motionState == "charging" || state.isCharging {
+                state.isCharging = false
+            } else if rawState == "charging" || motionState == "charging" {
                 state.cleanState = "charging"
                 state.cleanStateText = "Đang sạc pin tại trạm"
                 state.isCharging = true
@@ -532,9 +537,6 @@ public final class EcovacsDeviceService {
                 state.cleanStateText = state.isCharging ? "Đang sạc tại trạm" : "Nghỉ ngơi / Chờ lệnh"
             }
             if let tr = body["trigger"] as? String { state.cleanTrigger = tr }
-        } else if state.isCharging {
-            state.cleanState = "charging"
-            state.cleanStateText = "Đang sạc tại trạm"
         }
         
         // Chỉ lấy thêm thông số chuyên sâu khi full == true (tránh dồn dập 6 request gây nghẽn gateway)
@@ -751,9 +753,9 @@ public final class EcovacsDeviceService {
                 return nil
             }
             
-            // Nếu tọa độ từ vi điều khiển gửi về dạng mm thô (lớn hơn 150), quy đổi về đơn vị pixel viewBox SVG (chia cho 50 mm/pixel)
+            // Nếu tọa độ từ vi điều khiển gửi về dạng mm thô (lớn hơn 150), quy đổi về đơn vị pixel viewBox SVG (chia cho 50 mm/pixel, đảo dấu Y theo chuẩn SVG)
             let x = (abs(rawX) > 150) ? (rawX / 50.0) : rawX
-            let y = (abs(rawY) > 150) ? (rawY / 50.0) : rawY
+            let y = (abs(rawY) > 150) ? (-rawY / 50.0) : -rawY
             return (x, y, a)
         }
         
@@ -772,7 +774,7 @@ public final class EcovacsDeviceService {
                 return nil
             }
             let x = (abs(rawX) > 150) ? (rawX / 50.0) : rawX
-            let y = (abs(rawY) > 150) ? (rawY / 50.0) : rawY
+            let y = (abs(rawY) > 150) ? (-rawY / 50.0) : -rawY
             return (x, y)
         }
         

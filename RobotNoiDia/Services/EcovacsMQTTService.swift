@@ -120,6 +120,7 @@ public final class EcovacsMQTTService: ObservableObject {
         let reqId = String(UUID().uuidString.prefix(8)).lowercased()
         let topic = "iot/p2p/\(cmdName)/\(userId)/ecouser/\(deviceId)/\(device.did)/\(device.deviceClass)/\(device.resource)/q/\(reqId)/j"
         
+        let dataPayload: Any = (cmdName == "getPos") ? ["chargePos", "deebotPos"] : payloadArgs
         let payloadDict: [String: Any] = [
             "header": [
                 "pri": Int(priority) ?? 1,
@@ -128,7 +129,7 @@ public final class EcovacsMQTTService: ObservableObject {
                 "ver": "0.0.50"
             ],
             "body": [
-                "data": payloadArgs
+                "data": dataPayload
             ]
         ]
         
@@ -277,10 +278,16 @@ public final class EcovacsMQTTService: ObservableObject {
     private func handleRobotEvent(topic: String, payload: Data) {
         guard let json = (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any] else { return }
         var bodyData: [String: Any] = [:]
-        if let body = json["body"] as? [String: Any], let d = body["data"] as? [String: Any] {
+        if let resp = json["resp"] as? [String: Any], let body = resp["body"] as? [String: Any], let d = body["data"] as? [String: Any] {
+            bodyData = d
+        } else if let body = json["body"] as? [String: Any], let d = body["data"] as? [String: Any] {
             bodyData = d
         } else if let d = json["data"] as? [String: Any] {
             bodyData = d
+        } else if let b = json["body"] as? [String: Any] {
+            bodyData = b
+        } else {
+            bodyData = json
         }
         
         NotificationCenter.default.post(

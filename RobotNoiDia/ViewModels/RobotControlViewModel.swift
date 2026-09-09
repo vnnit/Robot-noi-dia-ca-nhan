@@ -225,13 +225,15 @@ public final class RobotControlViewModel: ObservableObject {
             if motionState == "pause" || rawState == "pause" {
                 self.state.cleanState = "pause"
                 self.state.cleanStateText = "Đang tạm dừng"
-            } else if rawState == "clean" && (motionState == "clean" || motionState == "working" || motionState == nil) {
+            } else if rawState == "clean" || motionState == "clean" || motionState == "working" {
                 self.state.cleanState = "clean"
                 self.state.cleanStateText = "Đang dọn dẹp"
+                self.state.isCharging = false
             } else if rawState == "go_charging" || motionState == "go_charging" {
                 self.state.cleanState = "go_charging"
                 self.state.cleanStateText = "Đang về trạm sạc"
-            } else if rawState == "charging" || motionState == "charging" || self.state.isCharging {
+                self.state.isCharging = false
+            } else if rawState == "charging" || motionState == "charging" {
                 self.state.cleanState = "charging"
                 self.state.cleanStateText = "Đang sạc pin"
                 self.state.isCharging = true
@@ -244,12 +246,18 @@ public final class RobotControlViewModel: ObservableObject {
                 self.state.cleanState = "error"
                 self.state.cleanStateText = "Báo lỗi"
             } else {
-                self.state.cleanState = self.state.isCharging ? "charging" : "idle"
-                self.state.cleanStateText = self.state.isCharging ? "Đang sạc pin tại trạm" : "Nghỉ ngơi / Chờ lệnh"
+                self.state.cleanState = "idle"
+                self.state.cleanStateText = "Nghỉ ngơi / Chờ lệnh"
             }
             NotificationManager.shared.notifyStateChange(device: self.device, state: self.state)
         } else if topic.contains("onChargeState") || topic.contains("getChargeState") {
-            if let ch = data["isCharging"] as? Bool { self.state.isCharging = ch }
+            if let ch = data["isCharging"] as? Bool {
+                if self.state.cleanState == "clean" || self.state.cleanState == "pause" {
+                    self.state.isCharging = false
+                } else {
+                    self.state.isCharging = ch
+                }
+            }
             if let m = data["mode"] as? String { self.state.chargeMode = m }
             self.state.chargeText = self.state.isCharging ? "Đang sạc pin tại trạm" : "Đang sử dụng pin"
             NotificationManager.shared.notifyStateChange(device: self.device, state: self.state)
@@ -271,7 +279,7 @@ public final class RobotControlViewModel: ObservableObject {
                 
                 if !(invalid == 1 && rawX == 0 && rawY == 0) {
                     let x = (abs(rawX) > 150) ? (rawX / 50.0) : rawX
-                    let y = (abs(rawY) > 150) ? (rawY / 50.0) : rawY
+                    let y = (abs(rawY) > 150) ? (-rawY / 50.0) : -rawY
                     self.recordNewRobotPosition(x: x, y: y, angle: a)
                 }
             }
@@ -287,7 +295,7 @@ public final class RobotControlViewModel: ObservableObject {
                 let rawY = (cPos["y"] as? NSNumber)?.doubleValue ?? 0.0
                 if rawX != 0 || rawY != 0 {
                     self.state.dockX = (abs(rawX) > 150) ? (rawX / 50.0) : rawX
-                    self.state.dockY = (abs(rawY) > 150) ? (rawY / 50.0) : rawY
+                    self.state.dockY = (abs(rawY) > 150) ? (-rawY / 50.0) : -rawY
                 }
             }
         } else if topic.contains("onError") || topic.contains("getError") {
@@ -379,15 +387,23 @@ public final class RobotControlViewModel: ObservableObject {
                 pollCounter += 1
                 let isMoving = self.state.cleanState == "clean" || self.state.cleanState == "go_charging"
                 
-                // 1. Cập nhật trạng thái máy (chỉ gọi getBattery/getChargeState mỗi 8 chu kỳ ~ 24s để giảm 80% tải gateway)
-                let shouldFull = (pollCounter % 8 == 0)
-                await self.refreshState(full: shouldFull)
+                // 1. Cập nhật trạng thái máy: khi đang dọn dẹp, giảm tần suất HTTP để tránh nghẽn luồng
+                if !isMoving || (pollCounter % 8 == 0) {
+                    let shouldFull = (pollCounter % 8 == 0)
+                    await self.refreshState(full: shouldFull)
+                }
                 
-                // 2. Khi robot đang hoạt động: cập nhật tọa độ & vẽ quỹ đạo thời gian thực
+                // 2. Khi robot đang hoạt động: cập nhật tọa độ & vẽ quỹ đạo thời gian thực (2s/lần)
                 if isMoving {
-                    await self.refreshLivePositionAndTrajectory()
+                    if EcovacsMQTTService.shared.isConnected {
+                        EcovacsMQTTService.shared.publishCommand(device: self.device, cmdName: "getPos")
+                    }
+                    // Dự phòng gọi HTTP định kỳ mỗi 4 chu kỳ (~8s)
+                    if pollCounter % 4 == 0 {
+                        await self.refreshLivePositionAndTrajectory()
+                    }
                     if self.state.cleanState == "clean" {
-                        self.state.cleanDurationSec += 3
+                        self.state.cleanDurationSec += 2
                     }
                 }
                 
@@ -395,8 +411,8 @@ public final class RobotControlViewModel: ObservableObject {
                     await self.refreshMap()
                 }
                 
-                // 3. Nghỉ ngơi giữa các chu kỳ: 3s khi đang dọn dẹp di chuyển, 8s khi nghỉ/sạc
-                let sleepSeconds: UInt64 = isMoving ? 3 : 8
+                // 3. Chu kỳ làm mới: 2s khi robot đang di chuyển, 8s khi sạc/nghỉ
+                let sleepSeconds: UInt64 = isMoving ? 2 : 8
                 try? await Task.sleep(nanoseconds: sleepSeconds * 1_000_000_000)
             }
         }
