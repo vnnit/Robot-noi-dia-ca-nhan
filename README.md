@@ -65,8 +65,11 @@
 
 ---
 
-### ⚡ Tối ưu phản hồi tức thời & Cập nhật Bản đồ Realtime (v1.1.51):
-- **Khắc phục triệt để lỗi spam thông báo**:
+### ⚡ Tối ưu phản hồi tức thời & Cập nhật Bản đồ Realtime (v1.1.51 - v1.1.52):
+- **Hiệu chỉnh chuẩn xác Icon Robot & Trạm Sạc (v1.1.52)**:
+  - Khắc phục lỗi đảo vị trí hiển thị: Chấm tròn xanh công nghệ có mũi tên định hướng hiện thị chuẩn xác là **Robot (Deebot)**, biểu tượng pin vàng có tia sét hiển thị chuẩn xác là **Trạm Sạc (Charging Dock)**.
+  - Tối ưu hóa đồ họa vector SVG: Tăng cường độ nét, hiệu ứng đổ bóng phát quang và mũi tên hướng di chuyển thời gian thực khi robot quay góc dọn dẹp.
+- **Khắc phục triệt để lỗi spam thông báo (v1.1.51)**:
   - Loại bỏ hoàn toàn xung đột trạng thái khiến robot bị nhận diện luân phiên giữa "đang dọn dẹp" và "về trạm sạc".
   - Bổ sung bộ lọc Rate-Limiter 15s cho từng thiết bị và yêu cầu phiên dọn dẹp thực tế tối thiểu trước khi kích hoạt thông báo cập bến trạm sạc.
 - **Bản đồ cập nhật tọa độ & đường đi Realtime (2s/lần)**:
@@ -75,7 +78,7 @@
   - Định dạng chuẩn mảng dữ liệu yêu cầu `["chargePos", "deebotPos"]` cho cả cổng MQTT Socket và REST Gateway.
 
 ### 🚀 Đang nghiên cứu & cập nhật tiếp theo:
-- [x] **Điều khiển trực tiếp 2 chiều qua Socket MQTT & Realtime Map**: Đã hoàn thành trong bản v1.1.51.
+- [x] **Điều khiển trực tiếp 2 chiều qua Socket MQTT & Realtime Map**: Đã hoàn thành trong bản v1.1.51 - v1.1.52.
 - [ ] **Giao tiếp mạng nội bộ Local LAN / Wi-Fi**: Tiếp tục khai thác dữ liệu giải mã APK Ecovacs (CoAP, mDNS, Matter/CHIP, UDP) để mở rộng kết nối trực tiếp trong mạng gia đình mà không cần ra Internet.
 
 ---
