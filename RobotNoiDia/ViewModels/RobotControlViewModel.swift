@@ -103,10 +103,12 @@ public final class RobotControlViewModel: ObservableObject {
                     self.state.cleanStateText = self.state.isCharging ? "Đang sạc pin tại trạm" : "Nghỉ ngơi / Chờ lệnh"
                 }
             }
+            NotificationManager.shared.notifyStateChange(device: self.device, state: self.state)
         } else if topic.contains("onChargeState") || topic.contains("getChargeState") {
             if let ch = data["isCharging"] as? Bool { self.state.isCharging = ch }
             if let m = data["mode"] as? String { self.state.chargeMode = m }
             self.state.chargeText = self.state.isCharging ? "Đang sạc pin tại trạm" : "Đang sử dụng pin"
+            NotificationManager.shared.notifyStateChange(device: self.device, state: self.state)
         } else if topic.contains("onPos") || topic.contains("getPos") {
             if let dPos = data["deebotPos"] as? [String: Any] {
                 let x = (dPos["x"] as? NSNumber)?.doubleValue ?? 0.0
@@ -119,8 +121,8 @@ public final class RobotControlViewModel: ObservableObject {
                 self.state.errorCode = code
                 self.state.errorText = Constants.errorDescriptions[code] ?? "Mã lỗi #\(code)"
             }
+            NotificationManager.shared.notifyStateChange(device: self.device, state: self.state)
         }
-        NotificationManager.shared.notifyStateChange(device: self.device, state: self.state)
     }
     
     public func renameRobot(newName: String) {

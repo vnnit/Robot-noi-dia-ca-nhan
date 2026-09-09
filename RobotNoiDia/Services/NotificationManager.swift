@@ -79,10 +79,23 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
         }
     }
     
-    // MARK: - Bộ theo dõi trạng thái Robot thông minh (Chống spam)
+    // MARK: - Bộ theo dõi trạng thái Robot thông minh (Chống spam tuyệt đối)
+    // 1. Khóa phiên dọn dẹp (Session Lock): Chỉ báo "Bắt đầu dọn dẹp" 1 lần duy nhất trong toàn bộ phiên
+    private var isCleaningSessionActive: [String: Bool] = [:]
+    
+    // 2. Thời điểm gửi thông báo gần nhất (did -> [type: Date]) để chống gửi trùng lặp
+    private var lastNotificationTimestamps: [String: [String: Date]] = [:]
+    
+    // 3. Trạng thái dọn dẹp gần nhất
     private var lastCleanStatePerDevice: [String: String] = [:]
     private var lastErrorCodePerDevice: [String: Int] = [:]
     private var lastBatteryWarningPerDevice: [String: Bool] = [:]
+    
+    // 4. Timer lọc bỏ tạm dừng ảo (khi robot dừng vài giây quét LiDAR dò bản đồ lúc mới xuất phát)
+    private var pendingPauseWorkItems: [String: DispatchWorkItem] = [:]
+    
+    // 5. Serial Queue xử lý đồng bộ tránh xung đột đa luồng
+    private let stateQueue = DispatchQueue(label: "com.robotnoidia.notification.stateQueue")
     
     public func notifyQuickStatusChange(device: DeviceModel, battery: Int?, isCharging: Bool?, cleanState: String?) {
         guard isEnabled else { return }
@@ -90,59 +103,132 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
         let devName = device.displayName
         let did = device.did
         
-        // 1. Theo dõi tiến độ dọn dẹp (Clean State)
-        if let currentCleanState = cleanState {
-            let previousCleanState = lastCleanStatePerDevice[did]
-            if let prev = previousCleanState, prev != currentCleanState {
+        stateQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            // 1. Theo dõi tiến độ dọn dẹp (Clean State)
+            if let rawState = cleanState?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !rawState.isEmpty {
+                let currentCleanState = rawState
+                let sessionActive = self.isCleaningSessionActive[did] ?? false
+                let now = Date()
+                
+                let canNotify = { (type: String, minInterval: TimeInterval) -> Bool in
+                    if let lastDate = self.lastNotificationTimestamps[did]?[type] {
+                        return now.timeIntervalSince(lastDate) >= minInterval
+                    }
+                    return true
+                }
+                
+                let markNotified = { (type: String) in
+                    if self.lastNotificationTimestamps[did] == nil {
+                        self.lastNotificationTimestamps[did] = [:]
+                    }
+                    self.lastNotificationTimestamps[did]?[type] = now
+                }
+                
                 switch currentCleanState {
                 case "clean":
-                    sendNotification(
-                        title: "🧹 \(devName) bắt đầu dọn dẹp",
-                        body: "\(devName) đã rời trạm sạc và bắt đầu dọn dẹp tự động."
-                    )
+                    // Robot đang chạy: HỦY ngay timer báo tạm dừng nếu có (robot đã tiếp tục dọn)
+                    self.pendingPauseWorkItems[did]?.cancel()
+                    self.pendingPauseWorkItems[did] = nil
+                    
+                    // CHỈ BÁO "Bắt đầu dọn dẹp" 1 LẦN DUY NHẤT KHI MỚI BẮT ĐẦU PHIÊN!
+                    // Nếu đã trong phiên dọn dẹp (sessionActive == true), TUYỆT ĐỐI KHÔNG BÁO LẠI khi robot dừng dò bản đồ rồi chạy tiếp!
+                    if !sessionActive && canNotify("clean", 120) {
+                        self.isCleaningSessionActive[did] = true
+                        markNotified("clean")
+                        self.sendNotification(
+                            title: "🧹 \(devName) bắt đầu dọn dẹp",
+                            body: "\(devName) đã rời trạm sạc và bắt đầu dọn dẹp tự động."
+                        )
+                    }
+                    
                 case "pause":
-                    sendNotification(
-                        title: "⏸ \(devName) tạm dừng",
-                        body: "Robot đang tạm dừng dọn dẹp."
-                    )
+                    // Khi robot rời trạm và dừng vài giây để quét laser LiDAR / định vị bản đồ,
+                    // firmware Ecovacs thường phát trạng thái pause ngắn.
+                    // Chúng ta đợi 12 giây: chỉ khi robot thực sự dừng hẳn quá 12s mới gửi thông báo!
+                    if sessionActive && canNotify("pause", 60) && self.pendingPauseWorkItems[did] == nil {
+                        let workItem = DispatchWorkItem { [weak self] in
+                            guard let self = self else { return }
+                            self.stateQueue.async {
+                                if self.lastCleanStatePerDevice[did] == "pause" {
+                                    markNotified("pause")
+                                    self.sendNotification(
+                                        title: "⏸ \(devName) tạm dừng",
+                                        body: "Robot đang tạm dừng dọn dẹp."
+                                    )
+                                }
+                                self.pendingPauseWorkItems[did] = nil
+                            }
+                        }
+                        self.pendingPauseWorkItems[did] = workItem
+                        DispatchQueue.global().asyncAfter(deadline: .now() + 12.0, execute: workItem)
+                    }
+                    
                 case "go_charging":
-                    sendNotification(
-                        title: "🔋 \(devName) hoàn thành & về trạm",
-                        body: "Robot đã làm sạch xong và đang trên đường quay về trạm sạc."
-                    )
+                    self.pendingPauseWorkItems[did]?.cancel()
+                    self.pendingPauseWorkItems[did] = nil
+                    
+                    if sessionActive && canNotify("go_charging", 60) {
+                        markNotified("go_charging")
+                        self.sendNotification(
+                            title: "🔋 \(devName) hoàn thành & về trạm",
+                            body: "Robot đã làm sạch xong và đang trên đường quay về trạm sạc."
+                        )
+                    }
+                    
                 case "charging":
-                    if prev == "go_charging" || prev == "clean" {
-                        sendNotification(
-                            title: "⚡️ \(devName) đã về trạm sạc",
-                            body: "Robot đã cập bến trạm sạc an toàn và đang nạp pin."
-                        )
+                    self.pendingPauseWorkItems[did]?.cancel()
+                    self.pendingPauseWorkItems[did] = nil
+                    
+                    // Robot đã về trạm sạc -> KẾT THÚC PHIÊN DỌN DẸP
+                    if sessionActive {
+                        self.isCleaningSessionActive[did] = false
+                        if canNotify("charging", 60) {
+                            markNotified("charging")
+                            self.sendNotification(
+                                title: "⚡️ \(devName) đã về trạm sạc",
+                                body: "Robot đã cập bến trạm sạc an toàn và đang nạp pin."
+                            )
+                        }
                     }
+                    
                 case "stop":
-                    if prev == "clean" {
-                        sendNotification(
-                            title: "⏹ \(devName) đã dừng dọn",
-                            body: "Phiên dọn dẹp của robot đã kết thúc."
-                        )
+                    self.pendingPauseWorkItems[did]?.cancel()
+                    self.pendingPauseWorkItems[did] = nil
+                    
+                    // Dừng dọn hẳn
+                    if sessionActive {
+                        self.isCleaningSessionActive[did] = false
+                        if canNotify("stop", 60) {
+                            markNotified("stop")
+                            self.sendNotification(
+                                title: "⏹ \(devName) đã dừng dọn",
+                                body: "Phiên dọn dẹp của robot đã kết thúc."
+                            )
+                        }
                     }
+                    
                 default:
                     break
                 }
+                
+                self.lastCleanStatePerDevice[did] = currentCleanState
             }
-            lastCleanStatePerDevice[did] = currentCleanState
-        }
-        
-        // 2. Theo dõi Pin yếu
-        if let bat = battery {
-            let charging = isCharging ?? false
-            let prevWarned = lastBatteryWarningPerDevice[did] ?? false
-            if bat <= 15 && !prevWarned && !charging {
-                sendNotification(
-                    title: "🪫 Pin yếu: \(devName)",
-                    body: "Mức pin của robot còn dưới \(bat)%. Vui lòng cho robot về trạm sạc."
-                )
-                lastBatteryWarningPerDevice[did] = true
-            } else if bat > 20 {
-                lastBatteryWarningPerDevice[did] = false
+            
+            // 2. Theo dõi Pin yếu
+            if let bat = battery {
+                let charging = isCharging ?? false
+                let prevWarned = self.lastBatteryWarningPerDevice[did] ?? false
+                if bat <= 15 && !prevWarned && !charging {
+                    self.sendNotification(
+                        title: "🪫 Pin yếu: \(devName)",
+                        body: "Mức pin của robot còn dưới \(bat)%. Vui lòng cho robot về trạm sạc."
+                    )
+                    self.lastBatteryWarningPerDevice[did] = true
+                } else if bat > 20 {
+                    self.lastBatteryWarningPerDevice[did] = false
+                }
             }
         }
     }
@@ -162,17 +248,19 @@ public final class NotificationManager: NSObject, UNUserNotificationCenterDelega
         let did = device.did
         
         // Theo dõi Báo sự cố / Báo lỗi phần cứng (Hardware error)
-        let prevError = lastErrorCodePerDevice[did] ?? 0
         let currentError = state.errorCode
-        
-        if currentError != prevError && currentError > 0 {
-            let desc = Constants.errorDescriptions[currentError] ?? "Robot gặp sự cố hoặc mắc kẹt."
-            sendNotification(
-                title: "⚠️ Cảnh báo sự cố: \(devName)",
-                body: "Mã lỗi \(currentError): \(desc)"
-            )
+        stateQueue.async { [weak self] in
+            guard let self = self else { return }
+            let prevError = self.lastErrorCodePerDevice[did] ?? 0
+            if currentError != prevError && currentError > 0 {
+                let desc = Constants.errorDescriptions[currentError] ?? "Robot gặp sự cố hoặc mắc kẹt."
+                self.sendNotification(
+                    title: "⚠️ Cảnh báo sự cố: \(devName)",
+                    body: "Mã lỗi \(currentError): \(desc)"
+                )
+            }
+            self.lastErrorCodePerDevice[did] = currentError
         }
-        lastErrorCodePerDevice[did] = currentError
     }
     
     // MARK: - UNUserNotificationCenterDelegate
