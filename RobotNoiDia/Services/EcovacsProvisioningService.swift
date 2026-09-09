@@ -343,8 +343,11 @@ public final class EcovacsProvisioningService: ObservableObject {
         existingDids: Set<String>,
         maxAttempts: Int = 20
     ) async throws -> ProvisioningCloudResult {
-        guard let creds = EcovacsAuthService.shared.getSavedCredentials() else {
-            throw NSError(domain: "Provisioning", code: -5, userInfo: [NSLocalizedDescriptionKey: "Chưa đăng nhập tài khoản Ecovacs!"])
+        let creds: AuthCredentials
+        do {
+            creds = try await EcovacsAuthService.shared.ensureValidToken()
+        } catch {
+            throw NSError(domain: "Provisioning", code: -5, userInfo: [NSLocalizedDescriptionKey: "Chưa đăng nhập tài khoản Ecovacs hoặc phiên đăng nhập đã hết hạn!"])
         }
         
         // Tạm dừng đếm ngược và thông báo cho người dùng bật lại 4G / nối Wi-Fi nhà nếu mất kết nối
