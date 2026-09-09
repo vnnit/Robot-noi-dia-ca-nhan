@@ -34,7 +34,7 @@ public final class RobotControlViewModel: ObservableObject {
     @Published public var svgMap: String? = nil
     @Published public var mapId: String? = nil
     @Published public var mapCoverageM2: Int? = nil
-    @Published public var mapBounds: CGRect = CGRect(x: -40, y: -40, width: 780, height: 680)
+    @Published public var mapBounds: CGRect = CGRect(x: -209, y: -23, width: 268, height: 102)
     @Published public var selectedTab: ControlTab = .controls
     
     // Thuộc tính điều khiển chi tiết theo Hình 2, 3, 4
@@ -221,7 +221,7 @@ public final class RobotControlViewModel: ObservableObject {
             let dx = newPoint.x - last.x
             let dy = newPoint.y - last.y
             let dist = (dx * dx + dy * dy).squareRoot()
-            if dist >= 3.0 {
+            if dist >= 0.5 {
                 self.state.trajectory.append(newPoint)
             }
         } else {

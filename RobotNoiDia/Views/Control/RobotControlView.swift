@@ -858,17 +858,17 @@ public struct RobotControlView: View {
         Button("Thêm Tường Ảo (Virtual Wall)") {
             let rx = viewModel.state.robotX
             let ry = viewModel.state.robotY
-            viewModel.addVirtualWall(x1: rx - 500, y1: ry - 300, x2: rx + 500, y2: ry - 300)
+            viewModel.addVirtualWall(x1: rx - 10, y1: ry - 10, x2: rx + 10, y2: ry - 10)
         }
         Button("Thêm Vùng Cấm Hút & Lau (No-Go)") {
             let rx = viewModel.state.robotX
             let ry = viewModel.state.robotY
-            viewModel.addRestrictedZone(x: rx - 400, y: ry + 200, width: 600, height: 600, type: .noGo)
+            viewModel.addRestrictedZone(x: rx - 10, y: ry + 5, width: 15, height: 15, type: .noGo)
         }
         Button("Thêm Vùng Cấm Lau Nhà (No-Mop)") {
             let rx = viewModel.state.robotX
             let ry = viewModel.state.robotY
-            viewModel.addRestrictedZone(x: rx + 300, y: ry, width: 500, height: 500, type: .noMop)
+            viewModel.addRestrictedZone(x: rx + 5, y: ry + 5, width: 12, height: 12, type: .noMop)
         }
         if !viewModel.state.virtualWalls.isEmpty || !viewModel.state.restrictedZones.isEmpty {
             Button("Xóa Tất Cả Tường Ảo & Vùng Cấm", role: .destructive) {
