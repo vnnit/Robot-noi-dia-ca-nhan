@@ -5,6 +5,7 @@ public struct SettingsTabView: View {
     @ObservedObject var viewModel: RobotControlViewModel
     @Environment(\.presentationMode) var presentationMode
     
+    @State private var showScheduleSheet: Bool = false
     @State private var showYikoSheet: Bool = false
     @State private var showCleaningLogSheet: Bool = false
     @State private var showConsumablesSheet: Bool = false
@@ -53,6 +54,17 @@ public struct SettingsTabView: View {
                                     iconColor: Color(red: 0.0, green: 0.75, blue: 0.45),
                                     title: "Nhật ký dọn dẹp",
                                     detail: "Lịch sử và diện tích đã làm sạch"
+                                )
+                            }
+                            
+                            Divider().padding(.leading, 50)
+                            
+                            Button(action: { showScheduleSheet = true }) {
+                                settingItemRow(
+                                    icon: "calendar.badge.clock",
+                                    iconColor: Color(red: 0.09, green: 0.47, blue: 1.0),
+                                    title: "Lịch hẹn giờ dọn dẹp",
+                                    detail: "Tự động kích hoạt chu trình dọn định kỳ"
                                 )
                             }
                             
@@ -319,6 +331,9 @@ public struct SettingsTabView: View {
             }
             .sheet(isPresented: $showCleaningLogSheet) {
                 CleaningLogSheetView(viewModel: viewModel)
+            }
+            .sheet(isPresented: $showScheduleSheet) {
+                ScheduleView(viewModel: viewModel)
             }
             .alert("Cài đặt thông minh AIVI", isPresented: $showAiviSheet) {
                 Button("Đóng", role: .cancel) {}

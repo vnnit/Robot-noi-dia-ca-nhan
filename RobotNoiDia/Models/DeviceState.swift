@@ -70,6 +70,22 @@ public struct DeviceState: Codable {
     public var dockY: Double
     public var trajectory: [MapPoint]
     
+    // Trạng thái Trạm Sạc Thông Minh (Station State - Dòng Omni / Turbo)
+    public var isWashingMop: Bool
+    public var isAirDrying: Bool
+    public var airDryingHours: Int
+    public var dustbinEmptying: Bool
+    
+    // Bản đồ nâng cao: Tường ảo & Vùng cấm
+    public var virtualWalls: [VirtualWall]
+    public var restrictedZones: [RestrictedZone]
+    
+    // Lịch hẹn giờ dọn dẹp
+    public var schedules: [CleaningScheduleItem]
+    
+    // Trợ lý giọng nói YIKO
+    public var yikoEnabled: Bool
+    
     public var fanSpeed: String
     public var waterAmount: Int // 1..4
     
@@ -99,6 +115,17 @@ public struct DeviceState: Codable {
             dockX: 0.0,
             dockY: 0.0,
             trajectory: [],
+            isWashingMop: false,
+            isAirDrying: false,
+            airDryingHours: 2,
+            dustbinEmptying: false,
+            virtualWalls: [],
+            restrictedZones: [],
+            schedules: [
+                CleaningScheduleItem(hour: 9, minute: 0, repeatDays: [2, 3, 4, 5, 6], isEnabled: false, cleanMode: "auto", label: "Dọn sáng các ngày đi làm"),
+                CleaningScheduleItem(hour: 14, minute: 30, repeatDays: [1, 7], isEnabled: false, cleanMode: "auto", label: "Dọn dẹp cuối tuần")
+            ],
+            yikoEnabled: true,
             fanSpeed: "standard",
             waterAmount: 2,
             volume: 7,
@@ -110,4 +137,5 @@ public struct DeviceState: Codable {
         )
     }
 }
+
 

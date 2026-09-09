@@ -11,6 +11,7 @@ public struct RobotControlView: View {
     @State private var showRenameAlert: Bool = false
     @State private var newNameText: String = ""
     @State private var showBanner: Bool = true
+    @State private var showBoundaryDialog: Bool = false
     
     public init(device: DeviceModel) {
         _viewModel = StateObject(wrappedValue: RobotControlViewModel(device: device))
@@ -151,6 +152,19 @@ public struct RobotControlView: View {
                         Image(systemName: "location.circle.fill")
                             .font(.system(size: 18))
                             .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                            .frame(width: 42, height: 42)
+                            .background(Color.white.opacity(0.95))
+                            .clipShape(Circle())
+                            .shadow(color: Color.black.opacity(0.08), radius: 5, y: 2)
+                    }
+                    
+                    // Nút Tường ảo & Vùng cấm
+                    Button(action: {
+                        showBoundaryDialog = true
+                    }) {
+                        Image(systemName: "hand.raised.slash.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(Color(red: 0.95, green: 0.25, blue: 0.25))
                             .frame(width: 42, height: 42)
                             .background(Color.white.opacity(0.95))
                             .clipShape(Circle())
@@ -427,6 +441,96 @@ public struct RobotControlView: View {
                             
                             // CÁC TÍNH NĂNG ĐIỀU KHIỂN THẬT (Khi vuốt lên)
                             VStack(alignment: .leading, spacing: 18) {
+                                // 0. TRẠM SẠC THÔNG MINH OMNI / TURBO
+                                if viewModel.device.hasOmniStation {
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        HStack {
+                                            Image(systemName: "powerplug.fill")
+                                                .font(.system(size: 14))
+                                                .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                                            Text("Trạm sạc thông minh OMNI")
+                                                .font(.system(size: 14, weight: .bold))
+                                                .foregroundColor(Color(white: 0.15))
+                                            Spacer()
+                                            if viewModel.state.isWashingMop {
+                                                Text("Đang giặt giẻ...")
+                                                    .font(.system(size: 11, weight: .semibold))
+                                                    .foregroundColor(.blue)
+                                            } else if viewModel.state.isAirDrying {
+                                                Text("Đang sấy khí nóng...")
+                                                    .font(.system(size: 11, weight: .semibold))
+                                                    .foregroundColor(.orange)
+                                            } else if viewModel.state.dustbinEmptying {
+                                                Text("Đang gom rác...")
+                                                    .font(.system(size: 11, weight: .semibold))
+                                                    .foregroundColor(.purple)
+                                            }
+                                        }
+                                        
+                                        HStack(spacing: 8) {
+                                            // Nút Giặt giẻ
+                                            Button(action: {
+                                                viewModel.triggerStationAction(viewModel.state.isWashingMop ? .stopMopWash : .startMopWash)
+                                            }) {
+                                                HStack(spacing: 5) {
+                                                    Image(systemName: viewModel.state.isWashingMop ? "stop.fill" : "drop.fill")
+                                                        .font(.system(size: 11))
+                                                    Text(viewModel.state.isWashingMop ? "Dừng giặt" : "Giặt giẻ")
+                                                        .font(.system(size: 12, weight: .semibold))
+                                                }
+                                                .foregroundColor(viewModel.state.isWashingMop ? .white : Color(red: 0.09, green: 0.47, blue: 1.0))
+                                                .frame(maxWidth: .infinity)
+                                                .frame(height: 36)
+                                                .background(viewModel.state.isWashingMop ? Color.blue : Color(red: 0.92, green: 0.96, blue: 1.0))
+                                                .cornerRadius(8)
+                                            }
+                                            
+                                            // Nút Sấy khô khí nóng
+                                            Button(action: {
+                                                viewModel.triggerStationAction(viewModel.state.isAirDrying ? .stopAirDrying : .startAirDrying)
+                                            }) {
+                                                HStack(spacing: 5) {
+                                                    Image(systemName: viewModel.state.isAirDrying ? "stop.fill" : "flame.fill")
+                                                        .font(.system(size: 11))
+                                                    Text(viewModel.state.isAirDrying ? "Dừng sấy" : "Sấy khô")
+                                                        .font(.system(size: 12, weight: .semibold))
+                                                }
+                                                .foregroundColor(viewModel.state.isAirDrying ? .white : Color.orange)
+                                                .frame(maxWidth: .infinity)
+                                                .frame(height: 36)
+                                                .background(viewModel.state.isAirDrying ? Color.orange : Color.orange.opacity(0.12))
+                                                .cornerRadius(8)
+                                            }
+                                            
+                                            // Nút Tự động Gom rác
+                                            Button(action: {
+                                                viewModel.triggerStationAction(.emptyDustbin)
+                                            }) {
+                                                HStack(spacing: 5) {
+                                                    Image(systemName: "trash.fill")
+                                                        .font(.system(size: 11))
+                                                    Text(viewModel.state.dustbinEmptying ? "Gom rác..." : "Gom rác")
+                                                        .font(.system(size: 12, weight: .semibold))
+                                                }
+                                                .foregroundColor(Color.purple)
+                                                .frame(maxWidth: .infinity)
+                                                .frame(height: 36)
+                                                .background(Color.purple.opacity(0.12))
+                                                .cornerRadius(8)
+                                            }
+                                        }
+                                    }
+                                    .padding(12)
+                                    .background(Color(red: 0.97, green: 0.98, blue: 1.0))
+                                    .cornerRadius(12)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Color.blue.opacity(0.15), lineWidth: 1)
+                                    )
+                                    
+                                    Divider().padding(.vertical, 2)
+                                }
+                                
                                 // 1. Số lần dọn: [1 lần | 2 lần]
                                 HStack {
                                     Text("Số lần dọn dẹp")
@@ -618,6 +722,32 @@ public struct RobotControlView: View {
             Button("Hủy", role: .cancel) {}
         } message: {
             Text("Đặt tên gợi nhớ cho robot của bạn.")
+        }
+        .confirmationDialog("Tường Ảo & Vùng Cấm", isPresented: $showBoundaryDialog, titleVisibility: .visible) {
+            Button("Thêm Tường Ảo (Virtual Wall)") {
+                let rx = viewModel.state.robotX
+                let ry = viewModel.state.robotY
+                viewModel.addVirtualWall(x1: rx - 500, y1: ry - 300, x2: rx + 500, y2: ry - 300)
+            }
+            Button("Thêm Vùng Cấm Hút & Lau (No-Go)") {
+                let rx = viewModel.state.robotX
+                let ry = viewModel.state.robotY
+                viewModel.addRestrictedZone(x: rx - 400, y: ry + 200, width: 600, height: 600, type: .noGo)
+            }
+            Button("Thêm Vùng Cấm Lau Nhà (No-Mop)") {
+                let rx = viewModel.state.robotX
+                let ry = viewModel.state.robotY
+                viewModel.addRestrictedZone(x: rx + 300, y: ry, width: 500, height: 500, type: .noMop)
+            }
+            if !viewModel.state.virtualWalls.isEmpty || !viewModel.state.restrictedZones.isEmpty {
+                Button("Xóa Tất Cả Tường Ảo & Vùng Cấm", role: .destructive) {
+                    viewModel.state.virtualWalls.removeAll()
+                    viewModel.state.restrictedZones.removeAll()
+                    Task { await viewModel.updateMapSvg() }
+                    viewModel.showToastNotification("Đã xóa tất cả tường ảo và vùng cấm")
+                }
+            }
+            Button("Đóng", role: .cancel) {}
         }
     }
     

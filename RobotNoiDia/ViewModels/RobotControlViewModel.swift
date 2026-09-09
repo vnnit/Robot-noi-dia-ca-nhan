@@ -147,10 +147,14 @@ public final class RobotControlViewModel: ObservableObject {
     }
     
     public func refreshAll() {
+        loadSchedules()
         Task {
             await refreshState(full: true)
             await refreshLivePositionAndTrajectory()
             await refreshConsumables()
+            if device.hasOmniStation {
+                await refreshStationState()
+            }
             await refreshMap()
             await fetchCleaningLogs()
         }
@@ -397,7 +401,9 @@ public final class RobotControlViewModel: ObservableObject {
             device: device,
             currentPos: (state.robotX, state.robotY, state.robotAngle),
             currentDock: (state.dockX, state.dockY),
-            trajectory: state.trajectory
+            trajectory: state.trajectory,
+            virtualWalls: state.virtualWalls,
+            restrictedZones: state.restrictedZones
         )
         self.svgMap = res.svg
         self.mapId = res.mid
@@ -411,6 +417,112 @@ public final class RobotControlViewModel: ObservableObject {
         self.isMapLoading = false
     }
     
+    // MARK: - Quản Lý Tường Ảo & Vùng Cấm (Virtual Boundaries)
+    public func addVirtualWall(x1: Double, y1: Double, x2: Double, y2: Double) {
+        let wall = VirtualWall(x1: x1, y1: y1, x2: x2, y2: y2)
+        self.state.virtualWalls.append(wall)
+        Task { await updateMapSvg() }
+        showToastNotification("Đã thêm tường ảo")
+    }
+    
+    public func addRestrictedZone(x: Double, y: Double, width: Double, height: Double, type: RestrictedZoneType) {
+        let zone = RestrictedZone(x: x, y: y, width: width, height: height, type: type)
+        self.state.restrictedZones.append(zone)
+        Task { await updateMapSvg() }
+        showToastNotification("Đã thêm \(type.title)")
+    }
+    
+    public func removeVirtualWall(id: String) {
+        self.state.virtualWalls.removeAll { $0.id == id }
+        Task { await updateMapSvg() }
+        showToastNotification("Đã xóa tường ảo")
+    }
+    
+    public func removeRestrictedZone(id: String) {
+        self.state.restrictedZones.removeAll { $0.id == id }
+        Task { await updateMapSvg() }
+        showToastNotification("Đã xóa vùng cấm")
+    }
+    
+    // MARK: - Điều Khiển Trạm Sạc Thông Minh (Station Controls)
+    public func triggerStationAction(_ action: StationActionType) {
+        isExecutingCommand = true
+        Task {
+            do {
+                try await deviceService.executeStationAction(device: device, action: action)
+                self.showToastNotification("Trạm sạc: \(action.title)")
+                
+                switch action {
+                case .emptyDustbin:
+                    self.state.dustbinEmptying = true
+                    try? await Task.sleep(nanoseconds: 12_000_000_000)
+                    self.state.dustbinEmptying = false
+                case .startMopWash:
+                    self.state.isWashingMop = true
+                case .stopMopWash:
+                    self.state.isWashingMop = false
+                case .startAirDrying:
+                    self.state.isAirDrying = true
+                case .stopAirDrying:
+                    self.state.isAirDrying = false
+                }
+            } catch {
+                self.showToastNotification("Lỗi trạm sạc: \(error.localizedDescription)")
+            }
+            self.isExecutingCommand = false
+        }
+    }
+    
+    public func refreshStationState() async {
+        let (washing, drying, dustFull) = await deviceService.getStationState(device: device)
+        self.state.isWashingMop = washing
+        self.state.isAirDrying = drying
+    }
+    
+    // MARK: - Lịch Hẹn Giờ Dọn Dẹp (Cleaning Schedule)
+    public func loadSchedules() {
+        self.state.schedules = deviceService.getSchedules(device: device)
+    }
+    
+    public func toggleSchedule(id: String) {
+        if let idx = self.state.schedules.firstIndex(where: { $0.id == id }) {
+            self.state.schedules[idx].isEnabled.toggle()
+            deviceService.saveSchedules(device: device, schedules: self.state.schedules)
+            let item = self.state.schedules[idx]
+            showToastNotification("\(item.label): \(item.isEnabled ? "Đã bật" : "Đã tắt")")
+        }
+    }
+    
+    public func addOrUpdateSchedule(_ item: CleaningScheduleItem) {
+        if let idx = self.state.schedules.firstIndex(where: { $0.id == item.id }) {
+            self.state.schedules[idx] = item
+        } else {
+            self.state.schedules.append(item)
+        }
+        deviceService.saveSchedules(device: device, schedules: self.state.schedules)
+        showToastNotification("Đã lưu lịch: \(item.timeString)")
+    }
+    
+    public func deleteSchedule(id: String) {
+        self.state.schedules.removeAll { $0.id == id }
+        deviceService.saveSchedules(device: device, schedules: self.state.schedules)
+        showToastNotification("Đã xóa lịch hẹn giờ")
+    }
+    
+    // MARK: - Trợ Lý Giọng Nói YIKO
+    public func toggleYikoVoice() {
+        let newTarget = !state.yikoEnabled
+        Task {
+            do {
+                try await deviceService.setVoiceAssistant(device: device, enabled: newTarget)
+                self.state.yikoEnabled = newTarget
+                self.showToastNotification("Trợ lý YIKO: \(newTarget ? "Đã bật" : "Đã tắt")")
+            } catch {
+                self.showToastNotification("Lỗi trợ lý YIKO: \(error.localizedDescription)")
+            }
+        }
+    }
+
     // MARK: - Cleaning Logs
     public func fetchCleaningLogs() async {
         isLogsLoading = true

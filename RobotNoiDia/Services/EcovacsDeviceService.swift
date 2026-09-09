@@ -476,7 +476,9 @@ public final class EcovacsDeviceService {
         device: DeviceModel,
         currentPos: (x: Double, y: Double, a: Double)? = nil,
         currentDock: (x: Double, y: Double)? = nil,
-        trajectory: [MapPoint] = []
+        trajectory: [MapPoint] = [],
+        virtualWalls: [VirtualWall] = [],
+        restrictedZones: [RestrictedZone] = []
     ) async -> MapResult {
         // 1. Lấy tọa độ nếu chưa có
         var pos = currentPos
@@ -531,7 +533,9 @@ public final class EcovacsDeviceService {
             isCharging: isCharging,
             robotPos: pos,
             dockPos: dock,
-            trajectory: trajectory
+            trajectory: trajectory,
+            virtualWalls: virtualWalls,
+            restrictedZones: restrictedZones
         )
         
         return MapResult(svg: svg, mid: mid, coverageM2: coverageM2, robotPos: pos, dockPos: dock)
@@ -552,7 +556,9 @@ public final class EcovacsDeviceService {
         isCharging: Bool,
         robotPos: (x: Double, y: Double, a: Double)?,
         dockPos: (x: Double, y: Double)?,
-        trajectory: [MapPoint]
+        trajectory: [MapPoint],
+        virtualWalls: [VirtualWall] = [],
+        restrictedZones: [RestrictedZone] = []
     ) -> String {
         let hasTiles = !activeTiles.isEmpty
         let minCol = hasTiles ? (activeTiles.map { $0.col }.min() ?? 0) : 0
@@ -680,6 +686,24 @@ public final class EcovacsDeviceService {
             svg.append("  <line x1=\"\(dockX)\" y1=\"\(dockY - 14)\" x2=\"\(rx)\" y2=\"\(ry)\" stroke=\"#00E5FF\" stroke-width=\"2.5\" stroke-dasharray=\"4,3\" opacity=\"0.8\" filter=\"url(#glow)\"/>")
         }
         
+        // Render Restricted Zones (Vùng cấm vào & Vùng cấm lau thảm)
+        for zone in restrictedZones {
+            let stroke = zone.type == .noGo ? "#EF4444" : "#A855F7"
+            let fill = zone.type == .noGo ? "#7F1D1D" : "#581C87"
+            svg.append("  <!-- Restricted Zone: \(zone.name) -->")
+            svg.append("  <rect x=\"\(zone.x)\" y=\"\(zone.y)\" width=\"\(zone.width)\" height=\"\(zone.height)\" rx=\"6\" fill=\"\(fill)\" fill-opacity=\"0.35\" stroke=\"\(stroke)\" stroke-width=\"2\" stroke-dasharray=\"4,3\" />")
+            svg.append("  <text x=\"\(zone.x + 8)\" y=\"\(zone.y + 18)\" fill=\"\(stroke)\" font-family=\"-apple-system, sans-serif\" font-size=\"10\" font-weight=\"bold\">\(zone.type == .noGo ? "🚫 Cấm vào" : "🛡️ Cấm lau thảm")</text>")
+        }
+        
+        // Render Virtual Walls (Tường ảo)
+        for wall in virtualWalls {
+            svg.append("  <!-- Virtual Wall -->")
+            svg.append("  <line x1=\"\(wall.x1)\" y1=\"\(wall.y1)\" x2=\"\(wall.x2)\" y2=\"\(wall.y2)\" stroke=\"#EF4444\" stroke-width=\"4\" stroke-dasharray=\"8,5\" />")
+            let midX = (wall.x1 + wall.x2) / 2.0
+            let midY = (wall.y1 + wall.y2) / 2.0
+            svg.append("  <text x=\"\(midX)\" y=\"\(midY - 6)\" fill=\"#FCA5A5\" font-family=\"-apple-system, sans-serif\" font-size=\"10\" font-weight=\"bold\" text-anchor=\"middle\">🚫 Tường ảo</text>")
+        }
+        
         // Charging Dock Station
         svg.append("  <!-- Charging Dock Station -->")
         svg.append("  <g transform=\"translate(\(dockX - 16.0), \(dockY - 16.0))\">")
@@ -745,6 +769,66 @@ public final class EcovacsDeviceService {
         }
         
         return (statsModel, logItems)
+    }
+    
+    // MARK: - 10. Điều Khiển Trạm Sạc Thông Minh (Station Action)
+    public func executeStationAction(device: DeviceModel, action: StationActionType) async throws {
+        var act = 1
+        var type = 1
+        switch action {
+        case .emptyDustbin:
+            act = 1
+            type = 1
+        case .startMopWash:
+            act = 1
+            type = 2
+        case .stopMopWash:
+            act = 0
+            type = 2
+        case .startAirDrying:
+            act = 1
+            type = 3
+        case .stopAirDrying:
+            act = 0
+            type = 3
+        }
+        _ = try await executeCommand(device: device, cmdName: "stationAction", payloadArgs: ["act": act, "type": type])
+    }
+    
+    public func getStationState(device: DeviceModel) async -> (isWashing: Bool, isDrying: Bool, dustbinFull: Bool) {
+        guard let res = try? await executeCommand(device: device, cmdName: "getStationState"),
+              let body = extractBodyData(res) else {
+            return (false, false, false)
+        }
+        let washing = (body["washState"] as? Int) == 1 || (body["mopWashState"] as? Int) == 1
+        let drying = (body["airDrying"] as? Int) == 1 || (body["airDryingState"] as? Int) == 1
+        let dustFull = (body["dustbinState"] as? Int) == 1
+        return (washing, drying, dustFull)
+    }
+    
+    // MARK: - 11. Trợ Lý Giọng Nói YIKO
+    public func setVoiceAssistant(device: DeviceModel, enabled: Bool) async throws {
+        _ = try await executeCommand(device: device, cmdName: "setVoiceAssistantState", payloadArgs: ["enable": enabled ? 1 : 0])
+    }
+    
+    // MARK: - 12. Quản Lý Lịch Hẹn Giờ Dọn Dẹp
+    public func getSchedules(device: DeviceModel) -> [CleaningScheduleItem] {
+        let key = "cleaning_schedules_\(device.did)"
+        if let data = UserDefaults.standard.data(forKey: key),
+           let list = try? JSONDecoder().decode([CleaningScheduleItem].self, from: data) {
+            return list
+        }
+        return [
+            CleaningScheduleItem(hour: 9, minute: 0, repeatDays: [2, 3, 4, 5, 6], isEnabled: false, cleanMode: "auto", label: "Dọn sáng các ngày đi làm"),
+            CleaningScheduleItem(hour: 14, minute: 30, repeatDays: [1, 7], isEnabled: false, cleanMode: "auto", label: "Dọn dẹp cuối tuần")
+        ]
+    }
+    
+    public func saveSchedules(device: DeviceModel, schedules: [CleaningScheduleItem]) {
+        let key = "cleaning_schedules_\(device.did)"
+        if let data = try? JSONEncoder().encode(schedules) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
     }
 
     
