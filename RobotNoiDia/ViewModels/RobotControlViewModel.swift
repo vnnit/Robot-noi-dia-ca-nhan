@@ -851,12 +851,13 @@ public final class RobotControlViewModel: ObservableObject {
     // MARK: - Sao Lưu & Khôi Phục Bản Đồ Đa Tầng (Map Backup & Restore)
     public func createMapBackup(name: String, floorName: String) {
         HapticManager.shared.success()
+        let vbStr = "\(Int(mapBounds.origin.x)) \(Int(mapBounds.origin.y)) \(Int(mapBounds.size.width)) \(Int(mapBounds.size.height))"
         let backup = MapBackupItem(
             name: name.isEmpty ? "Bản đồ \(floorName)" : name,
             floorName: floorName,
             date: Date(),
-            svgString: self.mapSvgString,
-            viewBox: self.mapViewBoxString,
+            svgString: self.svgMap ?? "",
+            viewBox: vbStr,
             rooms: self.availableRooms,
             virtualWalls: self.state.virtualWalls,
             restrictedZones: self.state.restrictedZones
@@ -868,8 +869,13 @@ public final class RobotControlViewModel: ObservableObject {
     
     public func restoreMapBackup(_ item: MapBackupItem) {
         HapticManager.shared.medium()
-        self.mapSvgString = item.svgString
-        self.mapViewBoxString = item.viewBox
+        if !item.svgString.isEmpty {
+            self.svgMap = item.svgString
+        }
+        let parts = item.viewBox.components(separatedBy: " ").compactMap { Double($0) }
+        if parts.count == 4 {
+            self.mapBounds = CGRect(x: parts[0], y: parts[1], width: parts[2], height: parts[3])
+        }
         self.availableRooms = item.rooms
         self.state.virtualWalls = item.virtualWalls
         self.state.restrictedZones = item.restrictedZones
@@ -878,13 +884,13 @@ public final class RobotControlViewModel: ObservableObject {
         deviceService.saveVirtualBoundaries(device: device, walls: item.virtualWalls, zones: item.restrictedZones)
         
         Task {
-            // Tái thiết lập tường ảo & tái định vị
-            try? await deviceService.setVirtualWalls(device: device, walls: item.virtualWalls)
-            try? await deviceService.setRestrictedZones(device: device, zones: item.restrictedZones)
-            try? await deviceService.relocate(device: device)
+            // Tái nạp SVG và kích hoạt tái định vị vị trí robot trên bản đồ
+            await self.updateMapSvg()
+            try? await self.deviceService.relocate(device: self.device)
             self.showToastNotification("Đã khôi phục thành công: \(item.name)")
         }
     }
+
     
     public func deleteMapBackup(id: String) {
         HapticManager.shared.light()
