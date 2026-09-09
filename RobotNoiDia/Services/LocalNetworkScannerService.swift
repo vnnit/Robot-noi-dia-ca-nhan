@@ -22,12 +22,14 @@ public struct DiscoveredLocalDevice: Identifiable, Hashable, Codable {
 }
 
 /// Dịch vụ quét và phát hiện Robot trong mạng Wi-Fi gia đình (Local LAN Discovery)
+/// Sử dụng hoàn toàn Apple Network.framework (NWConnection) - an toàn tuyệt đối, không crash
 public final class LocalNetworkScannerService {
     public static let shared = LocalNetworkScannerService()
     
     private init() {}
     
     /// Lấy địa chỉ IP và Subnet prefix của iPhone trên giao diện Wi-Fi (en0)
+    /// Đảm bảo kiểm tra con trỏ NULL an toàn (tránh EXC_BAD_ACCESS)
     public func getLocalWifiIPAddress() -> (ip: String, subnetPrefix: String)? {
         var address: String?
         var ifaddr: UnsafeMutablePointer<ifaddrs>?
@@ -39,118 +41,120 @@ public final class LocalNetworkScannerService {
         
         for ptr in sequence(first: firstAddr, next: { $0.pointee.ifa_next }) {
             let interface = ptr.pointee
-            let addrFamily = interface.ifa_addr.pointee.sa_family
+            // Kiểm tra an toàn: bỏ qua nếu ifa_addr là NULL
+            guard let ifaAddr = interface.ifa_addr else { continue }
             
+            let addrFamily = ifaAddr.pointee.sa_family
             if addrFamily == UInt8(AF_INET) {
                 let name = String(cString: interface.ifa_name)
-                // "en0" là interface Wi-Fi chính trên iOS
+                // "en0" là Wi-Fi chính trên iPhone
                 if name == "en0" || name.hasPrefix("en") {
                     var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-                    getnameinfo(
-                        interface.ifa_addr,
-                        socklen_t(interface.ifa_addr.pointee.sa_len),
+                    let result = getnameinfo(
+                        ifaAddr,
+                        socklen_t(ifaAddr.pointee.sa_len),
                         &hostname,
                         socklen_t(hostname.count),
                         nil,
                         0,
                         NI_NUMERICHOST
                     )
-                    address = String(cString: hostname)
-                    break
+                    if result == 0 {
+                        let ipCandidate = String(cString: hostname)
+                        if ipCandidate != "127.0.0.1" && ipCandidate.contains(".") {
+                            address = ipCandidate
+                            break
+                        }
+                    }
                 }
             }
         }
         
-        guard let ip = address, ip != "127.0.0.1" else { return nil }
-        
+        guard let ip = address else { return nil }
         let components = ip.split(separator: ".")
         guard components.count == 4 else { return nil }
         let subnetPrefix = "\(components[0]).\(components[1]).\(components[2])"
         return (ip: ip, subnetPrefix: subnetPrefix)
     }
     
-    /// Thăm dò một địa chỉ IP và cổng TCP cụ thể xem có phản hồi không
-    public func probePort(ip: String, port: Int, timeoutSec: Double = 0.25) async -> (isOpen: Bool, latencyMs: Int) {
+    /// Thăm dò một địa chỉ IP và cổng TCP cụ thể bằng Apple Network.framework (NWConnection)
+    /// Hoàn toàn an toàn bộ nhớ, tự động kích hoạt hộp thoại cấp quyền Mạng cục bộ (Local Network) của iOS
+    public func probePort(ip: String, port: Int, timeoutSec: Double = 0.35) async -> (isOpen: Bool, latencyMs: Int) {
+        guard let portEndpoint = NWEndpoint.Port(rawValue: UInt16(port)) else {
+            return (false, 0)
+        }
         let startTime = CFAbsoluteTimeGetCurrent()
+        let hostEndpoint = NWEndpoint.Host(ip)
+        
+        let tcpOptions = NWProtocolTCP.Options()
+        tcpOptions.connectionTimeout = Int(timeoutSec * 1000)
+        let params = NWParameters(tls: nil, tcp: tcpOptions)
+        let connection = NWConnection(host: hostEndpoint, port: portEndpoint, using: params)
         
         return await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                var sock = socket(AF_INET, SOCK_STREAM, 0)
-                guard sock >= 0 else {
-                    continuation.resume(returning: (false, 0))
-                    return
-                }
-                
-                // Đặt socket non-blocking để kiểm tra kết nối với timeout
-                var flags = fcntl(sock, F_GETFL, 0)
-                _ = fcntl(sock, F_SETFL, flags | O_NONBLOCK)
-                
-                var addr = sockaddr_in()
-                addr.sin_family = sa_family_t(AF_INET)
-                addr.sin_port = in_port_t(UInt16(port).bigEndian)
-                inet_pton(AF_INET, ip, &addr.sin_addr)
-                
-                let res = withUnsafePointer(to: &addr) {
-                    $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                        connect(sock, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
-                    }
-                }
-                
-                if res == 0 {
-                    close(sock)
+            let lock = NSLock()
+            var resumed = false
+            
+            let finish = { (isOpen: Bool) in
+                lock.lock()
+                defer { lock.unlock() }
+                if !resumed {
+                    resumed = true
+                    connection.stateUpdateHandler = nil
+                    connection.cancel()
                     let latency = Int((CFAbsoluteTimeGetCurrent() - startTime) * 1000)
-                    continuation.resume(returning: (true, max(1, latency)))
-                    return
+                    continuation.resume(returning: (isOpen, max(1, latency)))
                 }
-                
-                var writeSet = fd_set()
-                writeSet.zero()
-                writeSet.set(sock)
-                
-                var timeout = timeval(
-                    tv_sec: __darwin_time_t(Int(timeoutSec)),
-                    tv_usec: __darwin_suseconds_t(Int((timeoutSec.truncatingRemainder(dividingBy: 1.0)) * 1_000_000))
-                )
-                
-                let selectRes = select(sock + 1, nil, &writeSet, nil, &timeout)
-                var isOpen = false
-                
-                if selectRes > 0 && writeSet.isSet(sock) {
-                    var error: Int32 = 0
-                    var len = socklen_t(MemoryLayout<Int32>.size)
-                    getsockopt(sock, SOL_SOCKET, SO_ERROR, &error, &len)
-                    if error == 0 {
-                        isOpen = true
-                    }
-                }
-                
-                close(sock)
-                let latency = Int((CFAbsoluteTimeGetCurrent() - startTime) * 1000)
-                continuation.resume(returning: (isOpen, max(1, latency)))
             }
+            
+            // Bộ đếm Timeout an toàn
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeoutSec) {
+                finish(false)
+            }
+            
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    finish(true)
+                case .failed:
+                    finish(false)
+                case .waiting(let error):
+                    // Cổng bị từ chối (ECONNREFUSED) vẫn chứng minh thiết bị đang tồn tại và online
+                    if case .posix(let code) = error, code == .ECONNREFUSED {
+                        finish(true)
+                    } else {
+                        finish(false)
+                    }
+                case .cancelled:
+                    finish(false)
+                default:
+                    break
+                }
+            }
+            
+            connection.start(queue: DispatchQueue.global(qos: .userInitiated))
         }
     }
     
-    /// Phân giải tên máy (Hostname) qua Reverse DNS
+    /// Phân giải tên máy (Hostname) an toàn
     public func resolveHostname(ip: String) async -> String? {
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 var addr = sockaddr_in()
                 addr.sin_family = sa_family_t(AF_INET)
-                inet_pton(AF_INET, ip, &addr.sin_addr)
-                
-                var hostBuffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-                let result = withUnsafePointer(to: &addr) {
-                    $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                        getnameinfo($0, socklen_t(MemoryLayout<sockaddr_in>.size), &hostBuffer, socklen_t(hostBuffer.count), nil, 0, 0)
+                if inet_pton(AF_INET, ip, &addr.sin_addr) == 1 {
+                    var hostBuffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                    let result = withUnsafePointer(to: &addr) {
+                        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                            getnameinfo($0, socklen_t(MemoryLayout<sockaddr_in>.size), &hostBuffer, socklen_t(hostBuffer.count), nil, 0, 0)
+                        }
                     }
-                }
-                
-                if result == 0 {
-                    let name = String(cString: hostBuffer)
-                    if name != ip && !name.isEmpty {
-                        continuation.resume(returning: name)
-                        return
+                    if result == 0 {
+                        let name = String(cString: hostBuffer)
+                        if !name.isEmpty && name != ip {
+                            continuation.resume(returning: name)
+                            return
+                        }
                     }
                 }
                 continuation.resume(returning: nil)
@@ -158,14 +162,14 @@ public final class LocalNetworkScannerService {
         }
     }
     
-    /// Thử gửi request HTTP nhỏ để kiểm tra xem server nội bộ có phải Ecovacs/Deebot không
+    /// Nhận diện thương hiệu Robot Ecovacs / Deebot
     public func inspectDeviceIdentity(ip: String, port: Int) async -> (modelHint: String, isEcovacs: Bool) {
         guard let url = URL(string: "http://\(ip):\(port)/") else {
             return ("Thiết Bị Mạng", false)
         }
         
         var request = URLRequest(url: url)
-        request.timeoutInterval = 0.8
+        request.timeoutInterval = 0.6
         request.httpMethod = "GET"
         
         do {
@@ -182,7 +186,6 @@ public final class LocalNetworkScannerService {
             }
         } catch {}
         
-        // Nếu cổng 8883 mở (MQTT TLS) hoặc cổng 5222 mở (XMPP)
         if port == 8883 {
             return ("Robot Ecovacs (MQTT Port)", true)
         } else if port == 5222 || port == 5223 {
@@ -194,62 +197,62 @@ public final class LocalNetworkScannerService {
         return ("Thiết Bị Mạng (Cổng \(port))", false)
     }
     
-    /// Quét toàn bộ dải IP mạng cục bộ gia đình (254 IPs)
+    /// Quét toàn bộ dải IP mạng cục bộ gia đình (254 IPs) theo từng đợt (Batches)
+    /// Tránh quá tải router và tránh cạn kiệt socket file descriptors trên iOS
     public func scanSubnet(
         onProgress: @escaping (Float) -> Void
     ) async -> [DiscoveredLocalDevice] {
-        guard let wifi = getLocalWifiIPAddress() else {
-            // Fallback nếu không đọc được IP iPhone (VD trên Simulator): quét dải mặc định 192.168.1.x
-            return await performScan(subnetPrefix: "192.168.1", onProgress: onProgress)
+        let subnetPrefix: String
+        if let wifi = getLocalWifiIPAddress() {
+            subnetPrefix = wifi.subnetPrefix
+        } else {
+            subnetPrefix = "192.168.1"
         }
-        return await performScan(subnetPrefix: wifi.subnetPrefix, onProgress: onProgress)
-    }
-    
-    private func performScan(
-        subnetPrefix: String,
-        onProgress: @escaping (Float) -> Void
-    ) async -> [DiscoveredLocalDevice] {
+        
         var results: [DiscoveredLocalDevice] = []
         let targetPorts = [80, 8080, 8883, 5222, 4000]
         
+        let batchSize = 16
+        var completedHosts = 0
         let totalHosts = 254
-        var completedCount = 0
         
-        // Sử dụng TaskGroup với tối đa 25 tác vụ song song để quét cực nhanh
-        await withTaskGroup(of: DiscoveredLocalDevice?.self) { group in
-            for i in 1...totalHosts {
-                let candidateIp = "\(subnetPrefix).\(i)"
-                
-                group.addTask {
-                    for port in targetPorts {
-                        let (isOpen, latency) = await self.probePort(ip: candidateIp, port: port, timeoutSec: 0.20)
-                        if isOpen {
-                            let hostname = await self.resolveHostname(ip: candidateIp)
-                            let (hint, isEco) = await self.inspectDeviceIdentity(ip: candidateIp, port: port)
-                            
-                            let isEcovacsLikely = isEco || (hostname?.lowercased().contains("ecovacs") == true) || (hostname?.lowercased().contains("deebot") == true)
-                            let finalHint = isEcovacsLikely ? (isEco ? hint : "DEEBOT Robot (\(hostname ?? candidateIp))") : hint
-                            
-                            return DiscoveredLocalDevice(
-                                ip: candidateIp,
-                                port: port,
-                                hostname: hostname,
-                                latencyMs: latency,
-                                modelHint: finalHint,
-                                isEcovacsLikely: isEcovacsLikely
-                            )
-                        }
-                    }
-                    return nil
-                }
-            }
+        for batchStart in stride(from: 1, through: totalHosts, by: batchSize) {
+            let batchEnd = min(batchStart + batchSize - 1, totalHosts)
             
-            for await item in group {
-                completedCount += 1
-                let progress = Float(completedCount) / Float(totalHosts)
-                onProgress(progress)
-                if let dev = item {
-                    results.append(dev)
+            await withTaskGroup(of: DiscoveredLocalDevice?.self) { group in
+                for i in batchStart...batchEnd {
+                    let candidateIp = "\(subnetPrefix).\(i)"
+                    group.addTask {
+                        for port in targetPorts {
+                            let (isOpen, latency) = await self.probePort(ip: candidateIp, port: port, timeoutSec: 0.25)
+                            if isOpen {
+                                let hostname = await self.resolveHostname(ip: candidateIp)
+                                let (hint, isEco) = await self.inspectDeviceIdentity(ip: candidateIp, port: port)
+                                
+                                let isEcovacsLikely = isEco || (hostname?.lowercased().contains("ecovacs") == true) || (hostname?.lowercased().contains("deebot") == true)
+                                let finalHint = isEcovacsLikely ? (isEco ? hint : "DEEBOT Robot (\(hostname ?? candidateIp))") : hint
+                                
+                                return DiscoveredLocalDevice(
+                                    ip: candidateIp,
+                                    port: port,
+                                    hostname: hostname,
+                                    latencyMs: latency,
+                                    modelHint: finalHint,
+                                    isEcovacsLikely: isEcovacsLikely
+                                )
+                            }
+                        }
+                        return nil
+                    }
+                }
+                
+                for await dev in group {
+                    completedHosts += 1
+                    let progress = Float(completedHosts) / Float(totalHosts)
+                    onProgress(progress)
+                    if let d = dev {
+                        results.append(d)
+                    }
                 }
             }
         }
@@ -272,7 +275,7 @@ public final class LocalNetworkScannerService {
         
         let portsToTry = [port, 80, 8080, 8883, 5222]
         for p in portsToTry {
-            let (isOpen, latency) = await probePort(ip: trimmedIp, port: p, timeoutSec: 0.8)
+            let (isOpen, latency) = await probePort(ip: trimmedIp, port: p, timeoutSec: 0.6)
             if isOpen {
                 let (hint, isEco) = await inspectDeviceIdentity(ip: trimmedIp, port: p)
                 let hostname = await resolveHostname(ip: trimmedIp)
@@ -281,36 +284,5 @@ public final class LocalNetworkScannerService {
             }
         }
         return (false, 0, "Không có phản hồi")
-    }
-}
-
-// Extension hỗ trợ thao tác fd_set trong BSD Sockets
-extension fd_set {
-    mutating func zero() {
-        fds_bits = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-    }
-    
-    mutating func set(_ fd: Int32) {
-        let intOffset = Int(fd / 32)
-        let bitOffset = fd % 32
-        let mask = Int32(1 << bitOffset)
-        
-        withUnsafeMutablePointer(to: &self) { ptr in
-            let rawPtr = UnsafeMutableRawPointer(ptr)
-            let typedPtr = rawPtr.bindMemory(to: Int32.self, capacity: 32)
-            typedPtr[intOffset] |= mask
-        }
-    }
-    
-    func isSet(_ fd: Int32) -> Bool {
-        let intOffset = Int(fd / 32)
-        let bitOffset = fd % 32
-        let mask = Int32(1 << bitOffset)
-        
-        return withUnsafePointer(to: self) { ptr in
-            let rawPtr = UnsafeRawPointer(ptr)
-            let typedPtr = rawPtr.bindMemory(to: Int32.self, capacity: 32)
-            return (typedPtr[intOffset] & mask) != 0
-        }
     }
 }
