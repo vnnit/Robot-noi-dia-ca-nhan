@@ -91,12 +91,62 @@ public final class EcovacsMQTTService: ObservableObject {
         let topics = [
             "iot/atr/+/\(device.did)/\(device.deviceClass)/\(device.resource)/j",
             "iot/atr/+/\(device.did)/+/+/j",
-            "iot/p2p/+/\(device.did)/\(device.deviceClass)/\(device.resource)/+/+/+/p/+/j"
+            "iot/p2p/+/\(device.did)/\(device.deviceClass)/\(device.resource)/+/+/+/p/+/j",
+            "iot/p2p/+/+/+/+/\(device.did)/\(device.deviceClass)/\(device.resource)/p/+/j",
+            "iot/p2p/+/\(device.did)/#"
         ]
         for topic in topics {
             sendSubscribePacket(topic: topic)
         }
         print("[MQTT] Đã đăng ký lắng nghe sự kiện của Robot: \(device.displayName)")
+    }
+    
+    // MARK: - Phát lệnh tức thời trực tiếp qua Socket MQTT (Zero-HTTP Overhead)
+    @discardableResult
+    public func publishCommand(
+        device: DeviceModel,
+        cmdName: String,
+        payloadArgs: [String: Any] = [:],
+        priority: String = "1"
+    ) -> Bool {
+        guard isConnected, let conn = connection, conn.state == .ready else {
+            return false
+        }
+        
+        let km = KeychainManager.shared
+        guard let userId = km.userId, !userId.isEmpty else { return false }
+        let deviceId = km.deviceId
+        
+        let reqId = String(UUID().uuidString.prefix(8)).lowercased()
+        let topic = "iot/p2p/\(cmdName)/\(userId)/ecouser/\(deviceId)/\(device.did)/\(device.deviceClass)/\(device.resource)/q/\(reqId)/j"
+        
+        let payloadDict: [String: Any] = [
+            "header": [
+                "pri": Int(priority) ?? 1,
+                "ts": Int(Date().timeIntervalSince1970),
+                "tzm": 480,
+                "ver": "0.0.50"
+            ],
+            "body": [
+                "data": payloadArgs
+            ]
+        ]
+        
+        guard let payloadData = try? JSONSerialization.data(withJSONObject: payloadDict) else {
+            return false
+        }
+        
+        let topicData = encodeMqttString(topic)
+        let remainingLength = topicData.count + payloadData.count
+        
+        var packet = Data([0x30]) // PUBLISH QoS 0
+        packet.append(encodeRemainingLength(remainingLength))
+        packet.append(topicData)
+        packet.append(payloadData)
+        
+        sendRaw(packet)
+        print("[MQTT] ⚡ Đã phát lệnh tức thời qua Socket: \(cmdName) -> \(device.displayName)")
+        return true
     }
     
     // MARK: - Packet Builders (MQTT 3.1.1)

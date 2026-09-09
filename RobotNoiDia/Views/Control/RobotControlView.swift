@@ -3,6 +3,7 @@ import SwiftUI
 public struct RobotControlView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var viewModel: RobotControlViewModel
+    @ObservedObject private var mqttService = EcovacsMQTTService.shared
     
     // Quản lý Bottom Sheet 3 nấc kéo vuốt mượt mà chuẩn Ecovacs
     enum SheetSnapState {
@@ -411,6 +412,22 @@ public struct RobotControlView: View {
                         Text(viewModel.state.cleanStateText)
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(isPause ? Color.orange : Color(white: 0.35))
+                        if mqttService.isConnected {
+                            Text("•")
+                                .font(.system(size: 8))
+                                .foregroundColor(Color.green)
+                            HStack(spacing: 2) {
+                                Image(systemName: "bolt.fill")
+                                    .font(.system(size: 8))
+                                Text("Tức thời")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .foregroundColor(Color(red: 0.0, green: 0.6, blue: 0.3))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.green.opacity(0.12))
+                            .cornerRadius(4)
+                        }
                     } else {
                         Circle()
                             .fill(Color.gray)

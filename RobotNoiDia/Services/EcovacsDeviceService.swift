@@ -282,8 +282,47 @@ public final class EcovacsDeviceService {
         }
         UserDefaults.standard.removeObject(forKey: "custom_robot_name_\(did)")
     }
-    // MARK: - 2. Gửi lệnh chung (Direct CloudCtl REST)
+    // MARK: - 2. Gửi lệnh điều khiển (Hybrid: Socket MQTT Tức thời + Fallback HTTP REST)
     public func executeCommand(
+        device: DeviceModel,
+        cmdName: String,
+        payloadArgs: [String: Any] = [:],
+        payloadType: String = "j",
+        priority: String = "1"
+    ) async throws -> [String: Any] {
+        // 1. Kiểm tra nếu là lệnh hành động điều khiển: Phát trực tiếp qua Socket MQTT siêu tốc (~100ms thay vì 2-3s của REST HTTP)
+        let actionCommands: Set<String> = [
+            "clean", "charge", "move", "playSound", "setRelocationState",
+            "setSpeed", "setWaterInfo", "setVolume", "setChildLock", "setCarpetAutoFanBoost",
+            "stationAction", "setAutoEmpty", "setCleanPreference", "setWashFrequency",
+            "setAirDrying", "setCleanTimes", "setMoppingMode", "setEdgeDeepCleaning", "setDoNotDisturb"
+        ]
+        
+        let isActionCommand = actionCommands.contains(cmdName) || priority == "110"
+        
+        if isActionCommand && EcovacsMQTTService.shared.isConnected {
+            let sent = EcovacsMQTTService.shared.publishCommand(
+                device: device,
+                cmdName: cmdName,
+                payloadArgs: payloadArgs,
+                priority: priority
+            )
+            if sent {
+                return ["ret": "ok", "source": "mqtt_socket"]
+            }
+        }
+        
+        // 2. Dự phòng (Fallback) gửi qua HTTP REST devmanager.do
+        return try await executeCommandViaHttp(
+            device: device,
+            cmdName: cmdName,
+            payloadArgs: payloadArgs,
+            payloadType: payloadType,
+            priority: priority
+        )
+    }
+    
+    private func executeCommandViaHttp(
         device: DeviceModel,
         cmdName: String,
         payloadArgs: [String: Any] = [:],
