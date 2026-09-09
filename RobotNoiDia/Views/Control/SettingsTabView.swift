@@ -22,7 +22,7 @@ public struct SettingsTabView: View {
     public var body: some View {
         NavigationView {
             ZStack(alignment: .bottom) {
-                Color(UIColor.systemGroupedBackground)
+                Color(red: 0.96, green: 0.97, blue: 0.99)
                     .ignoresSafeArea()
                 
                 ScrollView {
@@ -42,7 +42,7 @@ public struct SettingsTabView: View {
                                     )
                                 }
                             }
-                            .background(Color(UIColor.secondarySystemGroupedBackground))
+                            .background(Color.white)
                             .cornerRadius(14)
                             .padding(.horizontal, 16)
                         }
@@ -83,7 +83,7 @@ public struct SettingsTabView: View {
                                 )
                             }
                         }
-                        .background(Color(UIColor.secondarySystemGroupedBackground))
+                        .background(Color.white)
                         .cornerRadius(14)
                         .padding(.horizontal, 16)
                         
@@ -198,7 +198,7 @@ public struct SettingsTabView: View {
                             .padding(.horizontal, 16)
                             .padding(.vertical, 14)
                         }
-                        .background(Color(UIColor.secondarySystemGroupedBackground))
+                        .background(Color.white)
                         .cornerRadius(14)
                         .padding(.horizontal, 16)
                         
@@ -245,7 +245,7 @@ public struct SettingsTabView: View {
                                 )
                             }
                         }
-                        .background(Color(UIColor.secondarySystemGroupedBackground))
+                        .background(Color.white)
                         .cornerRadius(14)
                         .padding(.horizontal, 16)
                         
@@ -293,7 +293,7 @@ public struct SettingsTabView: View {
                                 }
                             }
                         }
-                        .background(Color(UIColor.secondarySystemGroupedBackground))
+                        .background(Color.white)
                         .cornerRadius(14)
                         .padding(.horizontal, 16)
                         

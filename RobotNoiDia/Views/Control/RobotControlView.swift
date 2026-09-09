@@ -458,7 +458,7 @@ public struct RobotControlView: View {
             .scrollDisabled(!isSheetExpanded)
         }
         .frame(width: screenWidth, height: expandedHeight)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .background(Color.white)
         .cornerRadius(24, corners: [.topLeft, .topRight])
         .shadow(color: Color.black.opacity(0.12), radius: 12, y: -4)
         .offset(y: offsetY)
@@ -475,7 +475,7 @@ public struct RobotControlView: View {
                 cleanModeTabButton(title: "Khoanh vùng", mode: "custom", icon: "viewfinder")
             }
             .padding(3)
-            .background(Color(UIColor.tertiarySystemFill))
+            .background(Color(red: 0.94, green: 0.95, blue: 0.97))
             .cornerRadius(12)
             .padding(.horizontal, 16)
             
@@ -496,15 +496,15 @@ public struct RobotControlView: View {
                     VStack(spacing: 6) {
                         ZStack {
                             Circle()
-                                .fill(Color(UIColor.systemFill))
+                                .fill(Color(red: 0.95, green: 0.96, blue: 0.98))
                                 .frame(width: 50, height: 50)
                             Image(systemName: "map")
                                 .font(.system(size: 20))
-                                .foregroundColor(Color(UIColor.label))
+                                .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
                         }
                         Text("Bản đồ")
                             .font(.system(size: 11))
-                            .foregroundColor(Color(UIColor.secondaryLabel))
+                            .foregroundColor(Color.gray)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -533,7 +533,7 @@ public struct RobotControlView: View {
                         
                         Text(mainCleanButtonTitle)
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color(UIColor.label))
+                            .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -566,15 +566,15 @@ public struct RobotControlView: View {
                         VStack(spacing: 6) {
                             ZStack {
                                 Circle()
-                                    .fill(Color(UIColor.systemFill))
+                                    .fill(Color(red: 0.95, green: 0.96, blue: 0.98))
                                     .frame(width: 50, height: 50)
                                 Image(systemName: "bolt.fill")
                                     .font(.system(size: 20))
-                                    .foregroundColor(Color(UIColor.label))
+                                    .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
                             }
                             Text("Trạm sạc")
                                 .font(.system(size: 11))
-                                .foregroundColor(Color(UIColor.secondaryLabel))
+                                .foregroundColor(Color.gray)
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -612,10 +612,10 @@ public struct RobotControlView: View {
                 Text(title)
                     .font(.system(size: 12, weight: isSelected ? .bold : .medium))
             }
-            .foregroundColor(isSelected ? Color(red: 0.09, green: 0.47, blue: 1.0) : Color(UIColor.secondaryLabel))
+            .foregroundColor(isSelected ? Color(red: 0.09, green: 0.47, blue: 1.0) : Color.gray)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 7)
-            .background(isSelected ? Color(UIColor.secondarySystemGroupedBackground) : Color.clear)
+            .background(isSelected ? Color.white : Color.clear)
             .cornerRadius(10)
             .shadow(color: isSelected ? Color.black.opacity(0.06) : Color.clear, radius: 3, y: 1)
         }
@@ -639,10 +639,10 @@ public struct RobotControlView: View {
                             Text("Tất cả")
                                 .font(.system(size: 12, weight: .semibold))
                         }
-                        .foregroundColor(viewModel.selectedRoomIds.count == viewModel.availableRooms.count ? .white : Color(UIColor.label))
+                        .foregroundColor(viewModel.selectedRoomIds.count == viewModel.availableRooms.count ? .white : Color(red: 0.1, green: 0.1, blue: 0.12))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
-                        .background(viewModel.selectedRoomIds.count == viewModel.availableRooms.count ? Color.blue : Color(UIColor.tertiarySystemFill))
+                        .background(viewModel.selectedRoomIds.count == viewModel.availableRooms.count ? Color.blue : Color(red: 0.94, green: 0.95, blue: 0.97))
                         .cornerRadius(16)
                     }
                     
@@ -657,10 +657,10 @@ public struct RobotControlView: View {
                                 Text(room.name)
                                     .font(.system(size: 12, weight: isSelected ? .bold : .medium))
                             }
-                            .foregroundColor(isSelected ? .white : Color(UIColor.label))
+                            .foregroundColor(isSelected ? .white : Color(red: 0.1, green: 0.1, blue: 0.12))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
-                            .background(isSelected ? Color(red: 0.09, green: 0.47, blue: 1.0) : Color(UIColor.tertiarySystemFill))
+                            .background(isSelected ? Color(red: 0.09, green: 0.47, blue: 1.0) : Color(red: 0.94, green: 0.95, blue: 0.97))
                             .cornerRadius(16)
                         }
                     }
@@ -670,7 +670,7 @@ public struct RobotControlView: View {
             
             Text(viewModel.selectedRoomIds.isEmpty ? "Chạm để chọn các phòng cần dọn dẹp" : "Đã chọn \(viewModel.selectedRoomIds.count) phòng • Robot sẽ chỉ dọn các phòng này rồi về sạc")
                 .font(.system(size: 11))
-                .foregroundColor(Color(UIColor.secondaryLabel))
+                .foregroundColor(Color.gray)
         }
         .padding(.vertical, 2)
     }
@@ -682,7 +682,7 @@ public struct RobotControlView: View {
                 .foregroundColor(Color.cyan)
             Text("Vùng dọn: \(viewModel.customAreaBox.formattedAreaM2) • Kéo ô vuông trên bản đồ")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(Color(UIColor.label))
+                .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
             Spacer()
         }
         .padding(.horizontal, 14)
@@ -703,7 +703,7 @@ public struct RobotControlView: View {
                             .foregroundColor(viewModel.device.hasMopWashStation ? Color(red: 0.09, green: 0.47, blue: 1.0) : Color.purple)
                         Text(viewModel.device.hasMopWashStation ? (viewModel.device.hasAutoEmptyStation ? "Trạm sạc đa năng (OMNI)" : "Trạm sạc thông minh (Turbo)") : "Trạm hút rác tự động (Auto-Empty)")
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(Color(UIColor.label))
+                            .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
                     }
                     
                     Spacer()
@@ -797,11 +797,11 @@ public struct RobotControlView: View {
                 }
             }
             .padding(12)
-            .background(Color(UIColor.tertiarySystemGroupedBackground))
+            .background(Color(red: 0.97, green: 0.98, blue: 1.0))
             .cornerRadius(14)
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke(viewModel.device.hasAutoEmptyStation ? Color.purple.opacity(0.25) : Color.blue.opacity(0.2), lineWidth: 1)
+                    .stroke(viewModel.device.hasAutoEmptyStation ? Color.purple.opacity(0.2) : Color.blue.opacity(0.15), lineWidth: 1)
             )
             
             Divider().padding(.vertical, 2)
@@ -1350,7 +1350,7 @@ public struct CleaningLogSheetView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .background(Color.white)
         .cornerRadius(14)
         .shadow(color: Color.black.opacity(0.03), radius: 4, y: 1)
     }

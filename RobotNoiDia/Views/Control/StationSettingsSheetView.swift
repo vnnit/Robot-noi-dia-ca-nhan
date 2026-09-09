@@ -12,7 +12,7 @@ public struct StationSettingsSheetView: View {
     public var body: some View {
         NavigationView {
             ZStack {
-                Color(UIColor.systemGroupedBackground)
+                Color(red: 0.96, green: 0.97, blue: 0.99)
                     .ignoresSafeArea()
                 
                 ScrollView {
@@ -69,17 +69,17 @@ public struct StationSettingsSheetView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(viewModel.device.hasMopWashStation ? "Trạm Sạc Giặt Sấy Turbo" : "Trạm Hút Rác Tự Động")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(Color(UIColor.label))
+                    .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
                 
                 Text(stationCurrentStatusDescription)
                     .font(.system(size: 12))
-                    .foregroundColor(Color(UIColor.secondaryLabel))
+                    .foregroundColor(Color.gray)
             }
             
             Spacer()
         }
         .padding(14)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .background(Color.white)
         .cornerRadius(14)
         .shadow(color: Color.black.opacity(0.04), radius: 5, y: 2)
     }
@@ -106,7 +106,7 @@ public struct StationSettingsSheetView: View {
                     .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
                 Text("GIẶT GIẺ LAU TỰ ĐỘNG")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(Color(UIColor.secondaryLabel))
+                    .foregroundColor(Color.gray)
             }
             .padding(.leading, 4)
             
@@ -115,11 +115,11 @@ public struct StationSettingsSheetView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Tần suất robot quay về giặt giẻ")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Color(UIColor.label))
+                        .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
                     
                     Text("Robot sẽ tự động trở về trạm giặt sạch giẻ lau theo diện tích đã làm sạch:")
                         .font(.system(size: 11))
-                        .foregroundColor(Color(UIColor.secondaryLabel))
+                        .foregroundColor(Color.gray)
                     
                     HStack(spacing: 6) {
                         frequencyPill(title: "Sau 6 m²", key: "6m2")
@@ -137,11 +137,11 @@ public struct StationSettingsSheetView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Thời gian sấy nóng khí nóng 45°C")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Color(UIColor.label))
+                        .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
                     
                     Text("Thổi khí nóng làm khô giẻ hoàn toàn, diệt khuẩn và chống nấm mốc gây mùi:")
                         .font(.system(size: 11))
-                        .foregroundColor(Color(UIColor.secondaryLabel))
+                        .foregroundColor(Color.gray)
                     
                     HStack(spacing: 8) {
                         ForEach([2, 3, 4], id: \.self) { hours in
@@ -152,7 +152,7 @@ public struct StationSettingsSheetView: View {
                 }
                 .padding(14)
             }
-            .background(Color(UIColor.secondarySystemGroupedBackground))
+            .background(Color.white)
             .cornerRadius(14)
             .shadow(color: Color.black.opacity(0.04), radius: 5, y: 2)
         }
@@ -166,10 +166,10 @@ public struct StationSettingsSheetView: View {
         }) {
             Text(title)
                 .font(.system(size: 12, weight: isSelected ? .bold : .medium))
-                .foregroundColor(isSelected ? .white : Color(UIColor.label))
+                .foregroundColor(isSelected ? .white : Color(red: 0.1, green: 0.1, blue: 0.12))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 9)
-                .background(isSelected ? Color(red: 0.09, green: 0.47, blue: 1.0) : Color(UIColor.systemFill))
+                .background(isSelected ? Color(red: 0.09, green: 0.47, blue: 1.0) : Color(red: 0.94, green: 0.95, blue: 0.97))
                 .cornerRadius(9)
         }
     }
@@ -186,10 +186,10 @@ public struct StationSettingsSheetView: View {
                 Text("\(hours) Giờ")
                     .font(.system(size: 12, weight: isSelected ? .bold : .medium))
             }
-            .foregroundColor(isSelected ? .white : Color(UIColor.label))
+            .foregroundColor(isSelected ? .white : Color(red: 0.1, green: 0.1, blue: 0.12))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 9)
-            .background(isSelected ? Color.orange : Color(UIColor.systemFill))
+            .background(isSelected ? Color.orange : Color(red: 0.94, green: 0.95, blue: 0.97))
             .cornerRadius(9)
         }
     }
@@ -203,7 +203,7 @@ public struct StationSettingsSheetView: View {
                     .foregroundColor(Color.purple)
                 Text("TỰ ĐỘNG GOM RÁC (AUTO-EMPTY)")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(Color(UIColor.secondaryLabel))
+                    .foregroundColor(Color.gray)
             }
             .padding(.leading, 4)
             
@@ -211,11 +211,11 @@ public struct StationSettingsSheetView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Tần suất tự động gom rác vào dock")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Color(UIColor.label))
+                        .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
                     
                     Text("Tự động hút rác từ hộp bụi robot lên túi rác dung tích lớn 2.5L của trạm:")
                         .font(.system(size: 11))
-                        .foregroundColor(Color(UIColor.secondaryLabel))
+                        .foregroundColor(Color.gray)
                     
                     VStack(spacing: 8) {
                         autoEmptyOptionRow(title: "Sau mỗi lần dọn (Khuyên dùng)", detail: "Gom rác ngay khi robot vừa về trạm sạc", freq: 1)
@@ -227,7 +227,7 @@ public struct StationSettingsSheetView: View {
                 }
                 .padding(14)
             }
-            .background(Color(UIColor.secondarySystemGroupedBackground))
+            .background(Color.white)
             .cornerRadius(14)
             .shadow(color: Color.black.opacity(0.04), radius: 5, y: 2)
         }
@@ -254,10 +254,10 @@ public struct StationSettingsSheetView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.system(size: 13, weight: isSelected ? .bold : .medium))
-                        .foregroundColor(Color(UIColor.label))
+                        .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
                     Text(detail)
                         .font(.system(size: 11))
-                        .foregroundColor(Color(UIColor.secondaryLabel))
+                        .foregroundColor(Color.gray)
                 }
                 
                 Spacer()
@@ -274,7 +274,7 @@ public struct StationSettingsSheetView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("THAO TÁC THỦ CÔNG")
                 .font(.system(size: 12, weight: .bold))
-                .foregroundColor(Color(UIColor.secondaryLabel))
+                .foregroundColor(Color.gray)
                 .padding(.leading, 4)
             
             VStack(spacing: 10) {
