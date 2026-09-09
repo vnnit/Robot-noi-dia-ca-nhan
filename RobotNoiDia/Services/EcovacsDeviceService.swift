@@ -715,12 +715,13 @@ public final class EcovacsDeviceService {
             robot = (x, y, a)
         }
         
-        // chargePos
-        if let cPos = body["chargePos"] as? [String: Any] {
+        // chargePos / chargerPos
+        let cDict = (body["chargePos"] as? [String: Any]) ?? (body["chargerPos"] as? [String: Any])
+        if let cPos = cDict {
             let x = (cPos["x"] as? NSNumber)?.doubleValue ?? 0.0
             let y = (cPos["y"] as? NSNumber)?.doubleValue ?? 0.0
             dock = (x, y)
-        } else if let cArr = body["chargePos"] as? [[String: Any]], let first = cArr.first {
+        } else if let cArr = (body["chargePos"] as? [[String: Any]]) ?? (body["chargerPos"] as? [[String: Any]]), let first = cArr.first {
             let x = (first["x"] as? NSNumber)?.doubleValue ?? 0.0
             let y = (first["y"] as? NSNumber)?.doubleValue ?? 0.0
             dock = (x, y)

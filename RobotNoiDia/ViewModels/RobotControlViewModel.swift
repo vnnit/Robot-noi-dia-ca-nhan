@@ -69,6 +69,7 @@ public final class RobotControlViewModel: ObservableObject {
     
     private let deviceService = EcovacsDeviceService.shared
     private var pollingTask: Task<Void, Never>?
+    private var liveMapTrackingTask: Task<Void, Never>?
     private var consecutiveFailureCount: Int = 0
     private var pausePollingUntil: Date = Date.distantPast
     
@@ -284,10 +285,12 @@ public final class RobotControlViewModel: ObservableObject {
         // 2. Tải toàn bộ trạng thái ban đầu
         refreshAll()
         startStatePolling()
+        startLiveMapTracking()
     }
     
     public func onDisappear() {
         stopStatePolling()
+        stopLiveMapTracking()
     }
     
     public func refreshAll() {
@@ -305,7 +308,7 @@ public final class RobotControlViewModel: ObservableObject {
         }
     }
     
-    // MARK: - State Polling (Chu kỳ thông minh: 3s khi dọn, 6s khi nghỉ)
+    // MARK: - State Polling (Chu kỳ thông minh: 4s khi dọn, 8s khi nghỉ)
     public func refreshState(full: Bool = false) async {
         let (newState, isLiveSuccess) = await deviceService.getDeviceState(device: device, full: full, existingState: self.state)
         self.state = newState
@@ -335,7 +338,7 @@ public final class RobotControlViewModel: ObservableObject {
             while !Task.isCancelled {
                 guard let self = self else { break }
                 let isBusy = self.state.cleanState == "clean" || self.state.cleanState == "pause" || self.state.cleanState == "go_charging"
-                let sleepSeconds: UInt64 = isBusy ? 3 : 6
+                let sleepSeconds: UInt64 = isBusy ? 4 : 8
                 try? await Task.sleep(nanoseconds: sleepSeconds * 1_000_000_000)
                 guard !Task.isCancelled else { break }
                 
@@ -345,16 +348,11 @@ public final class RobotControlViewModel: ObservableObject {
                 }
                 
                 pollCounter += 1
-                let shouldFull = (pollCounter % 5 == 0)
+                let shouldFull = (pollCounter % 4 == 0)
                 await self.refreshState(full: shouldFull)
                 
-                if isBusy || self.selectedTab == .map {
-                    if Date() >= self.pausePollingUntil {
-                        await self.refreshLivePositionAndTrajectory()
-                        if self.svgMap == nil {
-                            await self.refreshMap()
-                        }
-                    }
+                if self.svgMap == nil {
+                    await self.refreshMap()
                 }
             }
         }
@@ -363,6 +361,41 @@ public final class RobotControlViewModel: ObservableObject {
     private func stopStatePolling() {
         pollingTask?.cancel()
         pollingTask = nil
+    }
+    
+    // MARK: - Theo dõi Vị trí Robot trên Bản đồ Thời gian thực (2 giây/lần khi đang dọn dẹp)
+    public func startLiveMapTracking() {
+        stopLiveMapTracking()
+        liveMapTrackingTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self = self else { break }
+                
+                // CHỈ TỰ ĐỘNG LÀM MỚI VỊ TRÍ 2S/LẦN KHI ROBOT ĐANG HOẠT ĐỘNG (dọn dẹp hoặc đang về sạc)
+                // Khi robot đang sạc hoặc nghỉ ngơi thì nghỉ ngơi, tuyệt đối không gửi lệnh gây tốn pin và nghẽn gateway
+                let isMoving = self.state.cleanState == "clean" || self.state.cleanState == "go_charging"
+                
+                if !isMoving {
+                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                    continue
+                }
+                
+                // Chu kỳ quét mượt mà đúng 2.0 giây
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard !Task.isCancelled else { break }
+                
+                // Nhường băng thông nếu người dùng vừa ấn nút điều khiển
+                if Date() < self.pausePollingUntil {
+                    continue
+                }
+                
+                await self.refreshLivePositionAndTrajectory()
+            }
+        }
+    }
+    
+    public func stopLiveMapTracking() {
+        liveMapTrackingTask?.cancel()
+        liveMapTrackingTask = nil
     }
     
     // MARK: - Tọa độ & Quỹ đạo thời gian thực (Real-time Live Trajectory)
@@ -387,7 +420,7 @@ public final class RobotControlViewModel: ObservableObject {
             let dx = newPoint.x - last.x
             let dy = newPoint.y - last.y
             let dist = (dx * dx + dy * dy).squareRoot()
-            if dist >= 0.5 {
+            if dist >= 0.25 {
                 self.state.trajectory.append(newPoint)
             }
         } else {
