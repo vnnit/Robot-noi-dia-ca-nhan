@@ -73,6 +73,19 @@ public enum EcoCRC8 {
     }
 }
 
+/// Kết quả polling từ Cloud
+public struct ProvisioningCloudResult: Sendable {
+    public enum Mode: Sendable {
+        case pollSCResult // devmanager.do (chuẩn WlAp cho T10, X1, v.v.)
+        case aliGetSCSync // ali.do (chuẩn V5 cho T8, T9)
+        case newDeviceFound // Quét thấy device mới tinh qua fetchDevices
+    }
+    public let mode: Mode
+    public let sn: String?
+    public let mid: String?
+    public let token: String?
+}
+
 /// Trạng thái của quá trình nạp Wi-Fi và ghép đôi Robot mới
 public enum ProvisioningStep: Equatable {
     case idle
@@ -86,7 +99,9 @@ public enum ProvisioningStep: Equatable {
 }
 
 /// Service quản lý toàn bộ quy trình Kích hoạt & Cài đặt Wi-Fi cho Robot Ecovacs mới
-/// Bóc tách và dịch ngược 100% từ giao thức gốc của Ecovacs Home App (SoftAP & AliGetSCSync)
+/// Hỗ trợ cả 2 thế hệ giao thức:
+/// 1. Dòng hiện đại (T10, T10 Turbo, X1, v.v.): SoftAP HTTP port 8888 (SetApConfig) & Cloud PollSCResult
+/// 2. Dòng tiền nhiệm (T8, T9, v.v.): SoftAP TCP port 9876 (scpa) & Cloud AliGetSCSync
 @MainActor
 public final class EcovacsProvisioningService: ObservableObject {
     public static let shared = EcovacsProvisioningService()
@@ -95,12 +110,9 @@ public final class EcovacsProvisioningService: ObservableObject {
     @Published public var isBusy: Bool = false
     @Published public var currentSck2: String? = nil
     
-    private let robotAPHost = "192.168.0.1"
-    private let robotAPPort: UInt16 = 9876
-    
     private init() {}
     
-    // MARK: - Bước 1 & 2: Gửi SSID, Mật khẩu và sck2 sang Robot qua TCP Socket (192.168.0.1:9876)
+    // MARK: - Bước 1 & 2: Gửi SSID, Mật khẩu và sck2 sang Robot qua SoftAP
     public func sendWifiCredentialsToRobot(
         ssid: String,
         password: String
@@ -110,7 +122,7 @@ public final class EcovacsProvisioningService: ObservableObject {
             throw NSError(domain: "Provisioning", code: -1, userInfo: [NSLocalizedDescriptionKey: "Tên Wi-Fi (SSID) không được để trống!"])
         }
         
-        // 1. Sinh chuỗi ngẫu nhiên 2 ký tự (giống RandomUtil.getRandomStr(2) trong mã nguồn gốc)
+        // 1. Sinh chuỗi ngẫu nhiên 2 ký tự (giống RandomUtil.getRandomStr(2) trong APK gốc)
         let letters = "abcdefghijklmnopqrstuvwxyz0123456789"
         let rand2 = String((0..<2).map { _ in letters.randomElement()! })
         
@@ -118,107 +130,74 @@ public final class EcovacsProvisioningService: ObservableObject {
         let sck2 = CryptoHelper.md5("\(cleanSSID)\(password)\(rand2)")
         self.currentSck2 = sck2
         
-        // 3. Đóng gói JSON {"sck2":"..."} và tạo slk_msg Base64
+        self.step = .sendingToRobot(progress: "Đang kết nối & truyền thông tin Wi-Fi sang Robot...")
+        self.isBusy = true
+        
+        // =========================================================================
+        // PHƯƠNG THỨC 1: HTTP API cổng 8888 (/req.do) - Chuẩn SoftAP hiện đại của T10, X1
+        // =========================================================================
+        let httpPayload = "{\"td\":\"SetApConfig\",\"s\":\"\(cleanSSID)\",\"p\":\"\(password)\",\"sc\":\"\",\"sck2\":\"\(sck2)\"}"
+        let httpRequestString = "POST /req.do HTTP/1.1\r\nHost: 192.168.0.1:8888\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: \(httpPayload.utf8.count)\r\nConnection: close\r\n\r\n\(httpPayload)"
+        guard let httpRequestData = httpRequestString.data(using: .utf8) else {
+            throw NSError(domain: "Provisioning", code: -2, userInfo: [NSLocalizedDescriptionKey: "Lỗi tạo gói tin HTTP SetApConfig!"])
+        }
+        
+        // Thử gửi HTTP tới 192.168.0.1:8888 rồi tới 192.168.5.1:8888
+        let candidateHosts = ["192.168.0.1", "192.168.5.1"]
+        for host in candidateHosts {
+            do {
+                print("[SoftAP-HTTP] Thử gửi SetApConfig tới \(host):8888...")
+                let reply = try sendViaBsdSocket(host: host, port: 8888, data: httpRequestData)
+                print("[SoftAP-HTTP] Phản hồi từ \(host):8888: '\(reply)'")
+                if reply.localizedCaseInsensitiveContains("\"ret\":\"ok\"") ||
+                   reply.localizedCaseInsensitiveContains("\"ret\": \"ok\"") ||
+                   reply.localizedCaseInsensitiveContains("200 OK") {
+                    print("[SoftAP-HTTP] Robot dòng T10/X1 tại \(host) đã chấp nhận cấu hình Wi-Fi thành công!")
+                    return sck2
+                }
+            } catch {
+                print("[SoftAP-HTTP] Không thể kết nối tới \(host):8888: \(error.localizedDescription)")
+            }
+        }
+        
+        // =========================================================================
+        // PHƯƠNG THỨC 2: TCP Socket cổng 9876 (scpa) - Chuẩn của T8, T9
+        // =========================================================================
         let slkJson = "{\"sck2\":\"\(sck2)\"}"
         let slkBuffer = EcoCRC8.getConfigBuffer(jsonString: slkJson)
         let slkMsg = slkBuffer.base64EncodedString()
-        
-        // 4. Tạo gói tin scpa theo đúng giao thức native của Ecovacs libjni-scpa.so
-        // Định dạng native: @{"td":"scpa","ssid":"...","passphrase":"...","encrypt":"yes","append_info":"0","slk_msg":"..."}
-        let rawJson = "{\"td\":\"scpa\",\"ssid\":\"\(cleanSSID)\",\"passphrase\":\"\(password)\",\"encrypt\":\"\(password.isEmpty ? "no" : "yes")\",\"append_info\":\"0\",\"slk_msg\":\"\(slkMsg)\"}"
-        let packetString = "@" + rawJson
-        guard let packetData = packetString.data(using: .utf8) else {
-            throw NSError(domain: "Provisioning", code: -2, userInfo: [NSLocalizedDescriptionKey: "Lỗi đóng gói gói tin cấu hình Wi-Fi!"])
+        let rawScpaJson = "{\"td\":\"scpa\",\"ssid\":\"\(cleanSSID)\",\"passphrase\":\"\(password)\",\"encrypt\":\"\(password.isEmpty ? "no" : "yes")\",\"append_info\":\"0\",\"slk_msg\":\"\(slkMsg)\"}"
+        let scpaPacketString = "@" + rawScpaJson
+        guard let scpaPacketData = scpaPacketString.data(using: .utf8) else {
+            throw NSError(domain: "Provisioning", code: -2, userInfo: [NSLocalizedDescriptionKey: "Lỗi đóng gói gói tin scpa!"])
         }
         
-        self.step = .sendingToRobot(progress: "Đang kết nối tới Robot qua Wi-Fi (192.168.0.1:9876)...")
-        self.isBusy = true
+        for host in candidateHosts {
+            do {
+                print("[SoftAP-Socket] Thử gửi scpa tới \(host):9876...")
+                let reply = try sendViaBsdSocket(host: host, port: 9876, data: scpaPacketData)
+                print("[SoftAP-Socket] Phản hồi từ \(host):9876: '\(reply)'")
+                if reply.localizedCaseInsensitiveContains("ok") || reply.localizedCaseInsensitiveContains("ret") {
+                    print("[SoftAP-Socket] Robot dòng T8/T9 tại \(host) đã chấp nhận cấu hình Wi-Fi!")
+                    return sck2
+                }
+            } catch {
+                print("[SoftAP-Socket] Không thể kết nối tới \(host):9876: \(error.localizedDescription)")
+            }
+        }
         
-        // Cách 1: Sử dụng BSD Socket với IP_BOUND_IF ép qua adapter Wi-Fi en0 (chống bị 4G Cellular chiếm luồng)
+        // Cách dự phòng cuối: Sử dụng NWConnection ép interface Wi-Fi tới 192.168.0.1:9876
         do {
-            print("[SoftAP] Thử kết nối trực tiếp qua BSD Socket gắn với adapter Wi-Fi...")
-            let resp = try sendViaBsdSocket(host: self.robotAPHost, port: self.robotAPPort, data: packetData)
-            print("[SoftAP] BSD Socket phản hồi thành công: \(resp)")
+            print("[SoftAP-NWConnection] Thử gửi qua Network.framework...")
+            try await sendViaNWConnection(host: "192.168.0.1", port: 9876, data: scpaPacketData)
             return sck2
         } catch {
-            print("[SoftAP] BSD Socket thất bại: \(error.localizedDescription). Thử phương thức NWConnection ép interface Wi-Fi...")
+            print("[SoftAP-NWConnection] Thất bại: \(error.localizedDescription)")
         }
         
-        // Cách 2: Sử dụng Network.framework với requiredInterfaceType = .wifi
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            let gate = ContinuationGate(continuation)
-            
-            let endpoint = NWEndpoint.hostPort(
-                host: NWEndpoint.Host(self.robotAPHost),
-                port: NWEndpoint.Port(rawValue: self.robotAPPort)!
-            )
-            
-            let tcpOptions = NWProtocolTCP.Options()
-            tcpOptions.connectionTimeout = 6
-            tcpOptions.enableKeepalive = false
-            
-            let params = NWParameters(tls: nil, tcp: tcpOptions)
-            params.requiredInterfaceType = .wifi // Ép buộc sử dụng Wi-Fi (bỏ qua 4G/Cellular)
-            params.prohibitedInterfaceTypes = [.cellular]
-            
-            let connection = NWConnection(to: endpoint, using: params)
-            
-            connection.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    // Đã kết nối TCP thành công tới Robot -> Bắn gói tin
-                    connection.send(content: packetData, completion: .contentProcessed { sendError in
-                        if let sendError = sendError {
-                            connection.cancel()
-                            gate.resume(throwing: sendError)
-                            return
-                        }
-                        
-                        // Chờ robot phản hồi {"ret":"ok"}
-                        connection.receive(minimumIncompleteLength: 1, maximumLength: 1024) { data, _, isComplete, recvError in
-                            defer {
-                                connection.cancel()
-                            }
-                            if let recvError = recvError {
-                                gate.resume(throwing: recvError)
-                                return
-                            }
-                            
-                            if let data = data, let respStr = String(data: data, encoding: .utf8) {
-                                print("[EcovacsProvisioning] Robot response: \(respStr)")
-                                if respStr.contains("ok") || respStr.contains("ret") {
-                                    gate.resume(returning: ())
-                                    return
-                                }
-                            }
-                            
-                            // Nếu robot đã nhận byte nhưng đóng socket
-                            gate.resume(returning: ())
-                        }
-                    })
-                    
-                case .failed(let err):
-                    connection.cancel()
-                    gate.resume(throwing: err)
-                    
-                case .cancelled:
-                    gate.resume(throwing: NSError(domain: "Provisioning", code: -3, userInfo: [NSLocalizedDescriptionKey: "Kết nối tới Robot bị hủy."]))
-                    
-                default:
-                    break
-                }
-            }
-            
-            // Timeout bảo vệ 8 giây nếu robot không phản hồi
-            DispatchQueue.global().asyncAfter(deadline: .now() + 8.0) {
-                connection.cancel()
-                gate.resume(throwing: NSError(domain: "Provisioning", code: -4, userInfo: [NSLocalizedDescriptionKey: "Không thể kết nối tới Robot tại 192.168.0.1:9876. Hãy thử tạm TẮT Dữ liệu di động (4G/LTE) trong Cài đặt iPhone để máy không bỏ qua mạng Wi-Fi của Robot."]))
-            }
-            
-            connection.start(queue: .global())
-        }
-        
-        return sck2
+        throw NSError(domain: "Provisioning", code: -4, userInfo: [
+            NSLocalizedDescriptionKey: "Không thể kết nối hoặc Robot không phản hồi cấu hình Wi-Fi (Cả cổng HTTP 8888 của T10 và TCP 9876 đều không phản hồi). Hãy kiểm tra:\n1. iPhone đã kết nối đúng vào Wi-Fi của Robot (ECOVACS_xxxx).\n2. Tạm TẮT Dữ liệu di động (4G/LTE) để máy không bỏ qua mạng Wi-Fi nội bộ của Robot."
+        ])
     }
     
     /// Gửi qua BSD Socket tiêu chuẩn và ép buộc gắn vào interface Wi-Fi (en0)
@@ -237,8 +216,8 @@ public final class EcovacsProvisioningService: ObservableObject {
             _ = setsockopt(sock, IPPROTO_IP, IP_BOUND_IF, &wifiIndex, socklen_t(MemoryLayout<UInt32>.size))
         }
         
-        // Timeout 5 giây
-        var timeout = timeval(tv_sec: 5, tv_usec: 0)
+        // Timeout 4 giây
+        var timeout = timeval(tv_sec: 4, tv_usec: 0)
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         
@@ -257,7 +236,7 @@ public final class EcovacsProvisioningService: ObservableObject {
         
         guard connectRes == 0 else {
             let err = errno
-            throw NSError(domain: "Provisioning", code: -12, userInfo: [NSLocalizedDescriptionKey: "Lỗi kết nối Socket tới Robot (errno \(err): \(String(cString: strerror(err))))."])
+            throw NSError(domain: "Provisioning", code: -12, userInfo: [NSLocalizedDescriptionKey: "Lỗi kết nối Socket tới \(host):\(port) (errno \(err): \(String(cString: strerror(err))))"])
         }
         
         let sent = data.withUnsafeBytes { ptr in
@@ -267,12 +246,63 @@ public final class EcovacsProvisioningService: ObservableObject {
             throw NSError(domain: "Provisioning", code: -13, userInfo: [NSLocalizedDescriptionKey: "Lỗi gửi dữ liệu sang Robot (errno: \(errno))"])
         }
         
-        var buf = [UInt8](repeating: 0, count: 2048)
+        var buf = [UInt8](repeating: 0, count: 4096)
         let recvd = Darwin.recv(sock, &buf, buf.count, 0)
         if recvd > 0 {
             return String(bytes: buf[0..<recvd], encoding: .utf8) ?? ""
         }
         return ""
+    }
+    
+    /// Gửi qua NWConnection với ép buộc interface Wi-Fi
+    private func sendViaNWConnection(host: String, port: UInt16, data: Data) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let gate = ContinuationGate(continuation)
+            let endpoint = NWEndpoint.hostPort(
+                host: NWEndpoint.Host(host),
+                port: NWEndpoint.Port(rawValue: port)!
+            )
+            
+            let tcpOptions = NWProtocolTCP.Options()
+            tcpOptions.connectionTimeout = 5
+            tcpOptions.enableKeepalive = false
+            
+            let params = NWParameters(tls: nil, tcp: tcpOptions)
+            params.requiredInterfaceType = .wifi
+            params.prohibitedInterfaceTypes = [.cellular]
+            
+            let connection = NWConnection(to: endpoint, using: params)
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    connection.send(content: data, completion: .contentProcessed { sendError in
+                        if let sendError = sendError {
+                            connection.cancel()
+                            gate.resume(throwing: sendError)
+                            return
+                        }
+                        connection.receive(minimumIncompleteLength: 1, maximumLength: 1024) { _, _, _, _ in
+                            connection.cancel()
+                            gate.resume(returning: ())
+                        }
+                    })
+                case .failed(let err):
+                    connection.cancel()
+                    gate.resume(throwing: err)
+                case .cancelled:
+                    gate.resume(throwing: NSError(domain: "Provisioning", code: -3, userInfo: [NSLocalizedDescriptionKey: "Kết nối bị hủy."]))
+                default:
+                    break
+                }
+            }
+            
+            DispatchQueue.global().asyncAfter(deadline: .now() + 6.0) {
+                connection.cancel()
+                gate.resume(throwing: NSError(domain: "Provisioning", code: -4, userInfo: [NSLocalizedDescriptionKey: "Hết thời gian chờ kết nối NWConnection."]))
+            }
+            
+            connection.start(queue: .global())
+        }
     }
     
     /// Tự động gỡ cấu hình Wi-Fi Robot để iOS tự động ngắt kết nối và quay về Wi-Fi nhà
@@ -295,99 +325,117 @@ public final class EcovacsProvisioningService: ObservableObject {
         guard let url = URL(string: "https://portal.ecouser.net/api/users/user.do") else { return false }
         var req = URLRequest(url: url)
         req.httpMethod = "HEAD"
-        req.timeoutInterval = 3.5
+        req.timeoutInterval = 3.0
         do {
             let (_, resp) = try await URLSession.shared.data(for: req)
-            if let http = resp as? HTTPURLResponse, http.statusCode > 0 {
+            if let httpResp = resp as? HTTPURLResponse, httpResp.statusCode < 500 {
                 return true
             }
+            return false
         } catch {
-            // Thử thêm captive.apple.com để xác nhận kết nối Internet chung
-            if let appleUrl = URL(string: "https://captive.apple.com") {
-                var appleReq = URLRequest(url: appleUrl)
-                appleReq.httpMethod = "HEAD"
-                appleReq.timeoutInterval = 2.5
-                if let (_, appleResp) = try? await URLSession.shared.data(for: appleReq),
-                   let http = appleResp as? HTTPURLResponse, http.statusCode > 0 {
-                    return true
-                }
-            }
+            return false
         }
-        return false
     }
-
-    // MARK: - Bước 3: Polling Cloud lấy mã bí mật dùng 1 lần (bindtoken)
+    
+    // MARK: - Bước 3: Polling Cloud (PollSCResult & AliGetSCSync với Bộ lọc Anti-False-Positive)
     public func pollBindTokenFromCloud(
         sck2: String,
-        maxAttempts: Int = 30
-    ) async throws -> String {
-        let creds = try await EcovacsAuthService.shared.ensureValidToken()
-        guard !creds.userId.isEmpty else {
-            throw NSError(domain: "Provisioning", code: -5, userInfo: [NSLocalizedDescriptionKey: "Chưa đăng nhập tài khoản Ecovacs! Vui lòng đăng nhập trước."])
+        existingDids: Set<String>,
+        maxAttempts: Int = 20
+    ) async throws -> ProvisioningCloudResult {
+        guard let creds = EcovacsAuthService.shared.getSavedCredentials() else {
+            throw NSError(domain: "Provisioning", code: -5, userInfo: [NSLocalizedDescriptionKey: "Chưa đăng nhập tài khoản Ecovacs!"])
         }
         
-        // 1. Tự động kiểm tra mạng Internet trước: Nếu iPhone đang bị ngắt mạng (do vừa rời Wi-Fi Robot và 4G đang tắt)
-        // -> Tạm dừng đếm ngược và thông báo cho người dùng bật lại 4G / nối Wi-Fi nhà
+        // Tạm dừng đếm ngược và thông báo cho người dùng bật lại 4G / nối Wi-Fi nhà nếu mất kết nối
         var isOnline = await isInternetAvailable()
         var waitNetCount = 0
         while !isOnline && waitNetCount < 30 {
-            self.step = .waitingForInternet(message: "Robot đã nhận Wi-Fi! Hãy BẬT LẠI 4G (hoặc vào Cài đặt đổi về Wi-Fi nhà) để tiếp tục hoàn tất...")
+            self.step = .waitingForInternet(message: "Robot đã nhận Wi-Fi! Hãy BẬT LẠI 4G (hoặc vào Cài đặt đổi về Wi-Fi nhà) để máy hoàn tất gán Robot...")
             try await Task.sleep(nanoseconds: 2_000_000_000)
             isOnline = await isInternetAvailable()
             waitNetCount += 1
         }
         
-        let ituid = creds.userId
-        let urlString = "https://portal.ecouser.net/api/alibridge/ali.do?ituid=\(ituid)"
-        guard let url = URL(string: urlString) else {
-            throw NSError(domain: "Provisioning", code: -6, userInfo: [NSLocalizedDescriptionKey: "URL API không hợp lệ."])
-        }
-        
-        let reqBody: [String: Any] = [
-            "td": "AliGetSCSync",
-            "data": [
-                "sck2": sck2
+        // Chuẩn bị Request 1: PollSCResult (devmanager.do - Dành cho T10, X1)
+        let devManagerUrl = URL(string: "https://portal.ecouser.net/api/iot/devmanager.do")!
+        let pollScPayload: [String: Any] = [
+            "td": "PollSCResult",
+            "sck": sck2,
+            "auth": [
+                "with": "users",
+                "userid": creds.userId,
+                "realm": "ecouser.net",
+                "token": creds.token
             ]
         ]
+        let pollScData = try? JSONSerialization.data(withJSONObject: pollScPayload, options: [])
         
-        guard let postData = try? JSONSerialization.data(withJSONObject: reqBody, options: []) else {
-            throw NSError(domain: "Provisioning", code: -7, userInfo: [NSLocalizedDescriptionKey: "Lỗi mã hóa JSON AliGetSCSync."])
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Dalvik/2.1.0 (Linux; U; Android 12)", forHTTPHeaderField: "User-Agent")
-        request.httpBody = postData
-        request.timeoutInterval = 8
+        // Chuẩn bị Request 2: AliGetSCSync (ali.do - Dành cho T8, T9)
+        let aliUrl = URL(string: "https://portal.ecouser.net/api/alibridge/ali.do?ituid=\(creds.userId)")!
+        let aliPayload: [String: Any] = [
+            "td": "AliGetSCSync",
+            "data": ["sck2": sck2]
+        ]
+        let aliData = try? JSONSerialization.data(withJSONObject: aliPayload, options: [])
         
         for attempt in 1...maxAttempts {
             self.step = .waitingRobotOnline(progress: "Đang đợi Robot kết nối Router & báo danh Cloud... (\(attempt)/\(maxAttempts))")
             
-            do {
-                let (data, response) = try await URLSession.shared.data(for: request)
-                if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
-                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        let code = json["code"] as? Int ?? -1
-                        if code == 0,
-                           let dataDict = json["data"] as? [String: Any],
-                           let scData = dataDict["SCData"] as? [String: Any],
-                           let bindToken = scData["bindtoken"] as? String,
-                           !bindToken.isEmpty {
-                            print("[EcovacsProvisioning] Lấy thành công bindtoken: \(bindToken)")
-                            return bindToken
-                        }
+            // 1. Thử PollSCResult (devmanager.do)
+            if let pollScData = pollScData {
+                var req = URLRequest(url: devManagerUrl)
+                req.httpMethod = "POST"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.setValue("Dalvik/2.1.0 (Linux; U; Android 12)", forHTTPHeaderField: "User-Agent")
+                req.httpBody = pollScData
+                req.timeoutInterval = 6
+                
+                if let (data, resp) = try? await URLSession.shared.data(for: req),
+                   let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let ret = json["ret"] as? String ?? ""
+                    if ret.lowercased() == "ok" {
+                        let sn = json["name"] as? String
+                        let mid = json["type"] as? String
+                        print("[Provisioning] PollSCResult THÀNH CÔNG! Robot đã kết nối Cloud: sn=\(sn ?? "nil"), mid=\(mid ?? "nil")")
+                        return ProvisioningCloudResult(mode: .pollSCResult, sn: sn, mid: mid, token: nil)
                     }
                 }
-            } catch {
-                print("[EcovacsProvisioning] Lần thử \(attempt) chưa lấy được bindtoken: \(error.localizedDescription)")
             }
             
-            // Cứ mỗi 3 lần thử, kiểm tra xem Robot đã xuất hiện trong danh sách thiết bị chưa
+            // 2. Thử AliGetSCSync (ali.do)
+            if let aliData = aliData {
+                var req = URLRequest(url: aliUrl)
+                req.httpMethod = "POST"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.setValue("Dalvik/2.1.0 (Linux; U; Android 12)", forHTTPHeaderField: "User-Agent")
+                req.httpBody = aliData
+                req.timeoutInterval = 6
+                
+                if let (data, resp) = try? await URLSession.shared.data(for: req),
+                   let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let code = json["code"] as? Int ?? -1
+                    if code == 0,
+                       let dataDict = json["data"] as? [String: Any],
+                       let scData = dataDict["SCData"] as? [String: Any],
+                       let bindToken = scData["bindtoken"] as? String,
+                       !bindToken.isEmpty {
+                        print("[Provisioning] AliGetSCSync lấy thành công bindtoken: \(bindToken)")
+                        return ProvisioningCloudResult(mode: .aliGetSCSync, sn: nil, mid: nil, token: bindToken)
+                    }
+                }
+            }
+            
+            // 3. Kiểm tra danh sách thiết bị trên Cloud (Chỉ chấp nhận DID MỚI TINH, không bị false positive với robot cũ)
             if attempt % 3 == 0 {
-                if let devices = try? await EcovacsDeviceService.shared.fetchDevices(), !devices.isEmpty {
-                    print("[EcovacsProvisioning] Đã phát hiện Robot mới xuất hiện trên Cloud!")
-                    return "cloud_auto_bound"
+                if let currentDevices = try? await EcovacsDeviceService.shared.fetchDevices() {
+                    if let newDevice = currentDevices.first(where: { !existingDids.contains($0.did) }) {
+                        let name = newDevice.displayName.isEmpty ? newDevice.name : newDevice.displayName
+                        print("[Provisioning] Đã phát hiện Robot mới tinh xuất hiện trên Cloud: \(name) (\(newDevice.did))!")
+                        return ProvisioningCloudResult(mode: .newDeviceFound, sn: newDevice.did, mid: newDevice.resource, token: nil)
+                    }
                 }
             }
             
@@ -395,25 +443,37 @@ public final class EcovacsProvisioningService: ObservableObject {
             try await Task.sleep(nanoseconds: 2_500_000_000)
         }
         
-        // Kiểm tra lần cuối trước khi báo lỗi
-        if let devices = try? await EcovacsDeviceService.shared.fetchDevices(), !devices.isEmpty {
-            return "cloud_auto_bound"
+        // Kiểm tra lần cuối cùng xem có robot mới nào xuất hiện chưa
+        if let currentDevices = try? await EcovacsDeviceService.shared.fetchDevices(),
+           let newDevice = currentDevices.first(where: { !existingDids.contains($0.did) }) {
+            let name = newDevice.displayName.isEmpty ? newDevice.name : newDevice.displayName
+            return ProvisioningCloudResult(mode: .newDeviceFound, sn: newDevice.did, mid: newDevice.resource, token: nil)
         }
         
-        throw NSError(domain: "Provisioning", code: -8, userInfo: [NSLocalizedDescriptionKey: "Hết thời gian chờ (Timeout). Robot chưa kết nối được với Wi-Fi nhà bạn hoặc mật khẩu Wi-Fi không đúng."])
+        throw NSError(domain: "Provisioning", code: -8, userInfo: [
+            NSLocalizedDescriptionKey: "Hết thời gian chờ (Timeout). Robot chưa kết nối được với Wi-Fi nhà bạn hoặc mật khẩu Wi-Fi không đúng (Đèn Wi-Fi trên robot vẫn nhấp nháy). Hãy thử kiểm tra lại mật khẩu và đặt robot gần Router hơn."
+        ])
     }
     
     // MARK: - Bước 4: Hoàn tất liên kết Robot vào tài khoản
-    public func completeBinding(bindToken: String) async throws -> String {
+    public func completeBinding(
+        result: ProvisioningCloudResult,
+        existingDids: Set<String>
+    ) async throws -> String {
         self.step = .bindingDevice(progress: "Đang xác thực và gán Robot vào tài khoản...")
         
-        // Gọi đồng bộ danh sách thiết bị trên Cloud để nhận diện robot mới
+        // Đồng bộ lại danh sách thiết bị trên Cloud để nhận diện robot mới
         let devices = try await EcovacsDeviceService.shared.fetchDevices()
-        if let newestDevice = devices.first {
+        if let newestDevice = devices.first(where: { !existingDids.contains($0.did) }) {
             let robotName = newestDevice.displayName.isEmpty ? newestDevice.name : newestDevice.displayName
             self.step = .success(robotName: robotName)
             self.isBusy = false
             return robotName
+        } else if let sn = result.sn, !sn.isEmpty {
+            let fallbackName = "DEEBOT (\(sn.suffix(6)))"
+            self.step = .success(robotName: fallbackName)
+            self.isBusy = false
+            return fallbackName
         } else {
             self.step = .success(robotName: "Robot Mới")
             self.isBusy = false
@@ -424,17 +484,22 @@ public final class EcovacsProvisioningService: ObservableObject {
     // MARK: - Hàm Orchestrator kích hoạt trọn gói
     public func executeFullProvisioningFlow(ssid: String, password: String) async {
         do {
-            // 1. Gửi cấu hình sang Robot AP
+            // 0. Lưu danh sách DID các robot hiện có trong tài khoản để chống nhận nhầm
+            let cached = EcovacsDeviceService.shared.getCachedDevices()
+            let existingDids = Set(cached.map { $0.did })
+            print("[Provisioning] Danh sách DID robot đã có trước khi gán: \(existingDids)")
+            
+            // 1. Gửi cấu hình sang Robot AP (Thử HTTP 8888 của T10/X1 và TCP 9876 của T8/T9)
             let sck2 = try await sendWifiCredentialsToRobot(ssid: ssid, password: password)
             
             // 2. Tự động đá Wi-Fi Robot để iOS quay về Wi-Fi nhà
             kickRobotWifi()
             
-            // 3. Polling Cloud lấy bindtoken (có cơ chế chờ Internet thông minh)
-            let token = try await pollBindTokenFromCloud(sck2: sck2)
+            // 3. Polling Cloud lấy bindtoken / kết quả (có cơ chế chờ Internet thông minh & chống false-positive)
+            let result = try await pollBindTokenFromCloud(sck2: sck2, existingDids: existingDids)
             
             // 4. Kích hoạt và gán vào tài khoản
-            _ = try await completeBinding(bindToken: token)
+            _ = try await completeBinding(result: result, existingDids: existingDids)
             
         } catch {
             self.step = .failed(error: error.localizedDescription)
