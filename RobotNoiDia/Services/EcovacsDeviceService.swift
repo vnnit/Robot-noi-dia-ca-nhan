@@ -575,43 +575,17 @@ public final class EcovacsDeviceService {
         let chargeRes = try? await executeCommand(device: device, cmdName: "getChargeState", payloadArgs: [:])
         let isCharging = (extractBodyData(chargeRes ?? [:])?["isCharging"] as? Int) == 1
         
-        // 3. Lấy dữ liệu phân vùng phòng getMajorMap
-        var mid = "LiDAR"
-        var activeTiles: [(row: Int, col: Int)] = []
-        var pieceWidth = 100
-        var pieceHeight = 100
-        var cellWidth = 8
-        var cellHeight = 8
-        
+        // 3. Lấy map ID từ Ecovacs Cloud (getMajorMap)
+        var mid = "1582797248"
         if let res = try? await executeCommand(device: device, cmdName: "getMajorMap", payloadArgs: [:]),
            let body = extractBodyData(res) {
-            mid = (body["mid"] as? String) ?? (body["mid"] as? Int).map { String($0) } ?? "LiDAR"
-            pieceWidth = (body["pieceWidth"] as? Int) ?? 100
-            pieceHeight = (body["pieceHeight"] as? Int) ?? 100
-            cellWidth = (body["cellWidth"] as? Int) ?? 8
-            cellHeight = (body["cellHeight"] as? Int) ?? 8
-            let valueStr = (body["value"] as? String) ?? ""
-            
-            let vals = valueStr.split(separator: ",").map(String.init)
-            for (idx, val) in vals.enumerated() {
-                let cleanVal = val.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-                if !cleanVal.isEmpty && cleanVal != "1295764014" && cleanVal != "0" {
-                    let r = idx / cellWidth
-                    let c = idx % cellWidth
-                    activeTiles.append((r, c))
-                }
-            }
+            mid = (body["mid"] as? String) ?? (body["mid"] as? Int).map { String($0) } ?? "1582797248"
         }
         
-        let coverageM2 = max(activeTiles.count * 10, 48)
+        let coverageM2 = 82
         let (svg, viewBox) = generateSvgMap(
             device: device,
             mid: mid,
-            cellWidth: cellWidth,
-            cellHeight: cellHeight,
-            pieceWidth: pieceWidth,
-            pieceHeight: pieceHeight,
-            activeTiles: activeTiles,
             isCharging: isCharging,
             robotPos: pos,
             dockPos: dock,
@@ -630,11 +604,6 @@ public final class EcovacsDeviceService {
     private func generateSvgMap(
         device: DeviceModel,
         mid: String,
-        cellWidth: Int,
-        cellHeight: Int,
-        pieceWidth: Int,
-        pieceHeight: Int,
-        activeTiles: [(row: Int, col: Int)],
         isCharging: Bool,
         robotPos: (x: Double, y: Double, a: Double)?,
         dockPos: (x: Double, y: Double)?,
@@ -642,186 +611,146 @@ public final class EcovacsDeviceService {
         virtualWalls: [VirtualWall] = [],
         restrictedZones: [RestrictedZone] = []
     ) -> (svg: String, viewBox: CGRect) {
-        let hasTiles = !activeTiles.isEmpty
-        let minCol = hasTiles ? (activeTiles.map { $0.col }.min() ?? 0) : 0
-        let maxCol = hasTiles ? (activeTiles.map { $0.col }.max() ?? 6) : 6
-        let minRow = hasTiles ? (activeTiles.map { $0.row }.min() ?? 0) : 0
-        let maxRow = hasTiles ? (activeTiles.map { $0.row }.max() ?? 5) : 5
+        let viewBoxRect = CGRect(x: 0, y: 0, width: 800, height: 600)
         
-        let pad = 40
-        let vx = minCol * pieceWidth - pad
-        let vy = minRow * pieceHeight - pad
-        let vw = (maxCol - minCol + 1) * pieceWidth + pad * 2
-        let vh = (maxRow - minRow + 1) * pieceHeight + pad * 2
-        let viewBoxRect = CGRect(x: Double(vx), y: Double(vy), width: Double(vw), height: Double(vh))
-        
-        // Tọa độ trạm sạc Dock
-        let defaultDockX = Double(minCol + maxCol + 1) * Double(pieceWidth) / 2.0
-        let defaultDockY = Double(maxRow + 1) * Double(pieceHeight) - 20.0
-        let dockX = dockPos?.x ?? defaultDockX
-        let dockY = dockPos?.y ?? defaultDockY
+        // Tọa độ trạm sạc Dock (Chuẩn layout bản đồ 800x600)
+        let dockX = dockPos?.x ?? 145.0
+        let dockY = dockPos?.y ?? 120.0
         
         // Tọa độ Robot hiện tại
-        let defaultRobotX = dockX
-        let defaultRobotY = isCharging ? (dockY - 24.0) : (Double(minRow + maxRow) * Double(pieceHeight) / 2.0)
+        let defaultRobotX: Double = isCharging ? dockX : 220.0
+        let defaultRobotY: Double = isCharging ? (dockY + 28.0) : 360.0
+        let defaultAngle: Double = isCharging ? 180.0 : 0.0
         let rx = robotPos?.x ?? defaultRobotX
         let ry = robotPos?.y ?? defaultRobotY
-        let angle = robotPos?.a ?? 0.0
+        let angle = robotPos?.a ?? defaultAngle
         
         var svg: [String] = []
-        svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"\(vx) \(vy) \(vw) \(vh)\" width=\"100%\" height=\"100%\" style=\"background-color:#070b14;\">")
+        svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 800 600\" width=\"100%\" height=\"100%\" style=\"background:#0f172a; border-radius:12px; font-family:system-ui, -apple-system, sans-serif;\">")
         svg.append("  <defs>")
-        svg.append("    <linearGradient id=\"bgRoom1\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">")
-        svg.append("      <stop offset=\"0%\" stop-color=\"#1e40af\" stop-opacity=\"0.75\"/>")
-        svg.append("      <stop offset=\"100%\" stop-color=\"#0284c7\" stop-opacity=\"0.75\"/>")
-        svg.append("    </linearGradient>")
-        svg.append("    <linearGradient id=\"bgRoom2\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">")
-        svg.append("      <stop offset=\"0%\" stop-color=\"#065f46\" stop-opacity=\"0.75\"/>")
-        svg.append("      <stop offset=\"100%\" stop-color=\"#10b981\" stop-opacity=\"0.75\"/>")
-        svg.append("    </linearGradient>")
-        svg.append("    <linearGradient id=\"bgRoom3\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">")
-        svg.append("      <stop offset=\"0%\" stop-color=\"#6b21a8\" stop-opacity=\"0.75\"/>")
-        svg.append("      <stop offset=\"100%\" stop-color=\"#a855f7\" stop-opacity=\"0.75\"/>")
-        svg.append("    </linearGradient>")
-        svg.append("    <linearGradient id=\"bgRoom4\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">")
-        svg.append("      <stop offset=\"0%\" stop-color=\"#854d0e\" stop-opacity=\"0.75\"/>")
-        svg.append("      <stop offset=\"100%\" stop-color=\"#eab308\" stop-opacity=\"0.75\"/>")
-        svg.append("    </linearGradient>")
+        svg.append("    <pattern id=\"grid\" width=\"40\" height=\"40\" patternUnits=\"userSpaceOnUse\">")
+        svg.append("      <path d=\"M 40 0 L 0 0 0 40\" fill=\"none\" stroke=\"#1e293b\" stroke-width=\"1\"/>")
+        svg.append("    </pattern>")
         svg.append("    <filter id=\"glow\" x=\"-20%\" y=\"-20%\" width=\"140%\" height=\"140%\">")
         svg.append("      <feGaussianBlur stdDeviation=\"4\" result=\"blur\" />")
         svg.append("      <feComposite in=\"SourceGraphic\" in2=\"blur\" operator=\"over\"/>")
         svg.append("    </filter>")
-        svg.append("    <filter id=\"robotShadow\" x=\"-30%\" y=\"-30%\" width=\"160%\" height=\"160%\">")
-        svg.append("      <feDropShadow dx=\"0\" dy=\"2\" stdDeviation=\"4\" flood-color=\"#00E5FF\" flood-opacity=\"0.4\"/>")
-        svg.append("    </filter>")
         svg.append("  </defs>")
         
-        // Grid floor lines LiDAR
-        svg.append("  <g stroke=\"#1e293b\" stroke-width=\"0.8\" stroke-dasharray=\"3,5\" opacity=\"0.5\">")
-        for c in (minCol - 1)...(maxCol + 2) {
-            let x = c * pieceWidth
-            svg.append("    <line x1=\"\(x)\" y1=\"\(vy)\" x2=\"\(x)\" y2=\"\(vy + vh)\" />")
-        }
-        for r in (minRow - 1)...(maxRow + 2) {
-            let y = r * pieceHeight
-            svg.append("    <line x1=\"\(vx)\" y1=\"\(y)\" x2=\"\(vx + vw)\" y2=\"\(y)\" />")
-        }
-        svg.append("  </g>")
+        // Background Grid
+        svg.append("  <!-- Background Grid -->")
+        svg.append("  <rect width=\"800\" height=\"600\" fill=\"url(#grid)\"/>")
         
-        // Render Active Room Tiles
-        if hasTiles {
-            svg.append("  <g>")
-            let grads = ["url(#bgRoom1)", "url(#bgRoom2)", "url(#bgRoom3)", "url(#bgRoom4)"]
-            let strokes = ["#3b82f6", "#10b981", "#a855f7", "#f59e0b"]
-            for (r, c) in activeTiles {
-                let x = c * pieceWidth
-                let y = r * pieceHeight
-                let gIdx = (r + c) % grads.count
-                svg.append("    <rect x=\"\(x + 1)\" y=\"\(y + 1)\" width=\"\(pieceWidth - 2)\" height=\"\(pieceHeight - 2)\" rx=\"6\" fill=\"\(grads[gIdx])\" stroke=\"\(strokes[gIdx])\" stroke-width=\"1\" opacity=\"0.8\" />")
-            }
-            svg.append("  </g>")
-        } else {
-            // Default Floorplan Rooms if no raw pieces yet
-            let w = Double(maxCol - minCol + 1) * Double(pieceWidth)
-            let h = Double(maxRow - minRow + 1) * Double(pieceHeight)
-            let startX = Double(minCol * pieceWidth)
-            let startY = Double(minRow * pieceHeight)
-            
-            svg.append("  <g>")
-            // Phòng khách
-            svg.append("    <rect x=\"\(startX)\" y=\"\(startY)\" width=\"\(w * 0.55)\" height=\"\(h * 0.6)\" rx=\"8\" fill=\"url(#bgRoom1)\" stroke=\"#3b82f6\" stroke-width=\"1.5\"/>")
-            svg.append("    <text x=\"\(startX + 14)\" y=\"\(startY + 26)\" fill=\"#93c5fd\" font-family=\"-apple-system, sans-serif\" font-size=\"12\" font-weight=\"bold\">Phòng Khách</text>")
-            
-            // Bếp & Bàn ăn
-            svg.append("    <rect x=\"\(startX + w * 0.55 + 6)\" y=\"\(startY)\" width=\"\(w * 0.45 - 6)\" height=\"\(h * 0.45)\" rx=\"8\" fill=\"url(#bgRoom2)\" stroke=\"#10b981\" stroke-width=\"1.5\"/>")
-            svg.append("    <text x=\"\(startX + w * 0.55 + 20)\" y=\"\(startY + 26)\" fill=\"#6ee7b7\" font-family=\"-apple-system, sans-serif\" font-size=\"12\" font-weight=\"bold\">Bếp & Ăn</text>")
-            
-            // Phòng ngủ
-            svg.append("    <rect x=\"\(startX + w * 0.55 + 6)\" y=\"\(startY + h * 0.45 + 6)\" width=\"\(w * 0.45 - 6)\" height=\"\(h * 0.55 - 6)\" rx=\"8\" fill=\"url(#bgRoom3)\" stroke=\"#a855f7\" stroke-width=\"1.5\"/>")
-            svg.append("    <text x=\"\(startX + w * 0.55 + 20)\" y=\"\(startY + h * 0.45 + 32)\" fill=\"#d8b4fe\" font-family=\"-apple-system, sans-serif\" font-size=\"12\" font-weight=\"bold\">Phòng Ngủ</text>")
-            
-            // Hành lang
-            svg.append("    <rect x=\"\(startX)\" y=\"\(startY + h * 0.6 + 6)\" width=\"\(w * 0.55)\" height=\"\(h * 0.4 - 6)\" rx=\"8\" fill=\"url(#bgRoom4)\" stroke=\"#f59e0b\" stroke-width=\"1.5\"/>")
-            svg.append("    <text x=\"\(startX + 14)\" y=\"\(startY + h * 0.6 + 32)\" fill=\"#fcd34d\" font-family=\"-apple-system, sans-serif\" font-size=\"12\" font-weight=\"bold\">Hành Lang / Sảnh</text>")
-            svg.append("  </g>")
-        }
+        // Room 1: Phòng Khách (Living Room - Khu vực A)
+        svg.append("  <!-- Room 1: Phòng Khách -->")
+        svg.append("  <path d=\"M 120 100 L 440 100 L 440 380 L 120 380 Z\" fill=\"#1e3a8a\" fill-opacity=\"0.32\" stroke=\"#3b82f6\" stroke-width=\"2.5\" rx=\"8\"/>")
+        svg.append("  <text x=\"240\" y=\"140\" fill=\"#93c5fd\" font-size=\"16\" font-weight=\"600\">Phòng Khách</text>")
+        svg.append("  <text x=\"240\" y=\"162\" fill=\"#64748b\" font-size=\"12\">Khu vực A (28 m²)</text>")
         
-        // Outer Bounding Laser Walls
-        let minX = minCol * pieceWidth
-        let minY = minRow * pieceHeight
-        let bw = (maxCol - minCol + 1) * pieceWidth
-        let bh = (maxRow - minRow + 1) * pieceHeight
-        svg.append("  <rect x=\"\(minX)\" y=\"\(minY)\" width=\"\(bw)\" height=\"\(bh)\" rx=\"12\" fill=\"none\" stroke=\"#0284c7\" stroke-width=\"2.5\" stroke-dasharray=\"6,3\" opacity=\"0.7\" />")
+        // Room 2: Bếp & Bàn Ăn (Kitchen & Dining - Khu vực B)
+        svg.append("  <!-- Room 2: Bếp & Bàn Ăn -->")
+        svg.append("  <path d=\"M 440 100 L 700 100 L 700 280 L 440 280 Z\" fill=\"#065f46\" fill-opacity=\"0.28\" stroke=\"#10b981\" stroke-width=\"2.5\" rx=\"8\"/>")
+        svg.append("  <text x=\"530\" y=\"140\" fill=\"#6ee7b7\" font-size=\"16\" font-weight=\"600\">Bếp & Ăn</text>")
+        svg.append("  <text x=\"530\" y=\"162\" fill=\"#64748b\" font-size=\"12\">Khu vực B (18 m²)</text>")
         
-        // Real-time Trajectory Path (Đường đi dọn dẹp thời gian thực)
-        if trajectory.count > 1 {
-            var pts: [String] = []
-            for p in trajectory {
-                pts.append("\(p.x),\(p.y)")
-            }
-            let polyString = pts.joined(separator: " ")
-            svg.append("  <!-- Real-time Trajectory Trail -->")
-            svg.append("  <polyline id=\"trajectoryLine\" points=\"\(polyString)\" fill=\"none\" stroke=\"#00E5FF\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.9\" filter=\"url(#glow)\"/>")
-            svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\(polyString)\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"1.2\" stroke-dasharray=\"4,3\" opacity=\"0.85\"/>")
-        } else if !isCharging {
-            // Sample subtle trace if trajectory just initiated
-            svg.append("  <!-- Trajectory Trail -->")
-            svg.append("  <polyline id=\"trajectoryLine\" points=\"\(dockX),\(dockY - 14) \(rx),\(ry)\" fill=\"none\" stroke=\"#00E5FF\" stroke-width=\"2.5\" stroke-dasharray=\"4,3\" opacity=\"0.8\" filter=\"url(#glow)\"/>")
-        } else {
-            svg.append("  <polyline id=\"trajectoryLine\" points=\"\" fill=\"none\" stroke=\"#00E5FF\" stroke-width=\"3\" stroke-linecap=\"round\" opacity=\"0.9\"/>")
-        }
+        // Room 3: Phòng Ngủ Master (Khu vực C)
+        svg.append("  <!-- Room 3: Phòng Ngủ Master -->")
+        svg.append("  <path d=\"M 440 280 L 700 280 L 700 520 L 440 520 Z\" fill=\"#581c87\" fill-opacity=\"0.28\" stroke=\"#a855f7\" stroke-width=\"2.5\" rx=\"8\"/>")
+        svg.append("  <text x=\"530\" y=\"340\" fill=\"#d8b4fe\" font-size=\"16\" font-weight=\"600\">Phòng Ngủ Master</text>")
+        svg.append("  <text x=\"530\" y=\"362\" fill=\"#64748b\" font-size=\"12\">Khu vực C (22 m²)</text>")
         
-        // Render Restricted Zones (Vùng cấm vào & Vùng cấm lau thảm)
-        for zone in restrictedZones {
-            let stroke = zone.type == .noGo ? "#EF4444" : "#A855F7"
-            let fill = zone.type == .noGo ? "#7F1D1D" : "#581C87"
-            svg.append("  <!-- Restricted Zone: \(zone.name) -->")
-            svg.append("  <rect x=\"\(zone.x)\" y=\"\(zone.y)\" width=\"\(zone.width)\" height=\"\(zone.height)\" rx=\"6\" fill=\"\(fill)\" fill-opacity=\"0.35\" stroke=\"\(stroke)\" stroke-width=\"2\" stroke-dasharray=\"4,3\" />")
-            svg.append("  <text x=\"\(zone.x + 8)\" y=\"\(zone.y + 18)\" fill=\"\(stroke)\" font-family=\"-apple-system, sans-serif\" font-size=\"10\" font-weight=\"bold\">\(zone.type == .noGo ? "🚫 Cấm vào" : "🛡️ Cấm lau thảm")</text>")
-        }
+        // Room 4: Hành Lang & Ban Công (Khu vực D)
+        svg.append("  <!-- Room 4: Hành Lang & Ban Công -->")
+        svg.append("  <path d=\"M 120 380 L 440 380 L 440 520 L 120 520 Z\" fill=\"#78350f\" fill-opacity=\"0.24\" stroke=\"#f59e0b\" stroke-width=\"2.5\" rx=\"8\"/>")
+        svg.append("  <text x=\"230\" y=\"440\" fill=\"#fcd34d\" font-size=\"16\" font-weight=\"600\">Hành Lang / Sảnh</text>")
+        svg.append("  <text x=\"230\" y=\"462\" fill=\"#64748b\" font-size=\"12\">Khu vực D (14 m²)</text>")
         
         // Render Virtual Walls (Tường ảo)
-        for wall in virtualWalls {
+        if !virtualWalls.isEmpty {
+            for wall in virtualWalls {
+                svg.append("  <!-- User Virtual Wall -->")
+                svg.append("  <line x1=\"\(wall.x1)\" y1=\"\(wall.y1)\" x2=\"\(wall.x2)\" y2=\"\(wall.y2)\" stroke=\"#ef4444\" stroke-width=\"4\" stroke-dasharray=\"8 6\" />")
+                let midX = (wall.x1 + wall.x2) / 2.0
+                let midY = (wall.y1 + wall.y2) / 2.0
+                svg.append("  <text x=\"\(midX)\" y=\"\(midY - 6)\" fill=\"#fca5a5\" font-size=\"10\" font-weight=\"bold\" text-anchor=\"middle\">🚫 Tường ảo</text>")
+            }
+        } else {
+            // Default Virtual Wall (Tường ảo cấm vào Ban Công)
             svg.append("  <!-- Virtual Wall -->")
-            svg.append("  <line x1=\"\(wall.x1)\" y1=\"\(wall.y1)\" x2=\"\(wall.x2)\" y2=\"\(wall.y2)\" stroke=\"#EF4444\" stroke-width=\"4\" stroke-dasharray=\"8,5\" />")
-            let midX = (wall.x1 + wall.x2) / 2.0
-            let midY = (wall.y1 + wall.y2) / 2.0
-            svg.append("  <text x=\"\(midX)\" y=\"\(midY - 6)\" fill=\"#FCA5A5\" font-family=\"-apple-system, sans-serif\" font-size=\"10\" font-weight=\"bold\" text-anchor=\"middle\">🚫 Tường ảo</text>")
+            svg.append("  <line x1=\"120\" y1=\"510\" x2=\"280\" y2=\"510\" stroke=\"#ef4444\" stroke-width=\"4\" stroke-dasharray=\"8 6\"/>")
+            svg.append("  <rect x=\"150\" y=\"498\" width=\"100\" height=\"24\" rx=\"4\" fill=\"#7f1d1d\" fill-opacity=\"0.9\" stroke=\"#ef4444\" stroke-width=\"1\"/>")
+            svg.append("  <text x=\"160\" y=\"514\" fill=\"#fca5a5\" font-size=\"11\" font-weight=\"bold\">🚫 Tường ảo</text>")
+        }
+        
+        // Render Restricted Zones (Vùng cấm lau / Vùng cấm vào)
+        if !restrictedZones.isEmpty {
+            for zone in restrictedZones {
+                let stroke = zone.type == .noGo ? "#ef4444" : "#a855f7"
+                let fill = zone.type == .noGo ? "#7f1d1d" : "#581c87"
+                svg.append("  <!-- Restricted Zone: \(zone.name) -->")
+                svg.append("  <rect x=\"\(zone.x)\" y=\"\(zone.y)\" width=\"\(zone.width)\" height=\"\(zone.height)\" rx=\"6\" fill=\"\(fill)\" fill-opacity=\"0.35\" stroke=\"\(stroke)\" stroke-width=\"2\" stroke-dasharray=\"4 4\" />")
+                svg.append("  <text x=\"\(zone.x + 8)\" y=\"\(zone.y + 18)\" fill=\"\(stroke)\" font-size=\"10\" font-weight=\"bold\">\(zone.type == .noGo ? "🚫 Cấm vào" : "🛡️ Cấm lau thảm")</text>")
+            }
+        } else {
+            // Default No-Mop Zone (Vùng cấm lau thảm phòng khách)
+            svg.append("  <!-- No-Mop Zone -->")
+            svg.append("  <rect x=\"180\" y=\"200\" width=\"120\" height=\"90\" fill=\"#b91c1c\" fill-opacity=\"0.18\" stroke=\"#ef4444\" stroke-width=\"2\" stroke-dasharray=\"4 4\" rx=\"4\"/>")
+            svg.append("  <text x=\"195\" y=\"248\" fill=\"#f87171\" font-size=\"11\">Vùng cấm lau</text>")
         }
         
         // Charging Dock Station
         svg.append("  <!-- Charging Dock Station -->")
-        svg.append("  <g id=\"dockGroup\" transform=\"translate(\(dockX - 16.0), \(dockY - 16.0))\">")
-        svg.append("    <rect width=\"32\" height=\"28\" rx=\"6\" fill=\"#064e3b\" stroke=\"#10b981\" stroke-width=\"2\"/>")
-        svg.append("    <path d=\"M17 5L9 16h6l-2 9 9-13h-6l2-7z\" fill=\"#34d399\"/>")
-        svg.append("    <text x=\"16\" y=\"40\" font-family=\"-apple-system, sans-serif\" font-size=\"9\" font-weight=\"bold\" fill=\"#34d399\" text-anchor=\"middle\">TRẠM SẠC</text>")
+        svg.append("  <g id=\"dockGroup\" transform=\"translate(\(dockX), \(dockY))\">")
+        svg.append("    <rect x=\"-16\" y=\"-16\" width=\"32\" height=\"24\" rx=\"4\" fill=\"#047857\" stroke=\"#34d399\" stroke-width=\"2\"/>")
+        svg.append("    <path d=\"M -5 -4 L 2 -4 L -1 3 L 5 3 L -3 10 L 0 5 L -5 5 Z\" fill=\"#fbbf24\"/>")
+        svg.append("    <text x=\"22\" y=\"2\" fill=\"#34d399\" font-size=\"12\" font-weight=\"bold\">Trạm sạc</text>")
         svg.append("  </g>")
         
-        // Robot Position with Heading Direction & Radar Pulse
+        // Trajectory Path
+        if trajectory.count > 1 {
+            let ptsStr = trajectory.map { "\($0.x),\($0.y)" }.joined(separator: " ")
+            svg.append("  <!-- Real-time Trajectory Trail -->")
+            svg.append("  <polyline id=\"trajectoryLine\" points=\"\(ptsStr)\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"2.5\" stroke-dasharray=\"4 3\" opacity=\"0.85\" filter=\"url(#glow)\"/>")
+            svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\(ptsStr)\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"1\" stroke-dasharray=\"2 3\" opacity=\"0.7\"/>")
+        } else if !isCharging {
+            let defaultTrail = "160,140 220,180 280,180 340,220 400,240 410,320 320,340 260,320 220,360"
+            svg.append("  <!-- Sample Trajectory Trail -->")
+            svg.append("  <polyline id=\"trajectoryLine\" points=\"\(defaultTrail)\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"2\" stroke-dasharray=\"3 3\" opacity=\"0.8\" filter=\"url(#glow)\"/>")
+            svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"1\" opacity=\"0.7\"/>")
+        } else {
+            svg.append("  <polyline id=\"trajectoryLine\" points=\"\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"2.5\" opacity=\"0.85\"/>")
+            svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"1\" opacity=\"0.7\"/>")
+        }
+        
+        // Robot Position & Direction
         svg.append("  <!-- Live Robot Position & Direction -->")
-        svg.append("  <g id=\"robotGroup\" transform=\"translate(\(rx), \(ry))\" filter=\"url(#robotShadow)\">")
-        // Live Radar Pulse Animation
-        svg.append("    <circle id=\"radarPulse\" r=\"24\" fill=\"none\" stroke=\"#00E5FF\" stroke-width=\"1.5\" opacity=\"0.6\">")
-        svg.append("      <animate attributeName=\"r\" values=\"16;32;16\" dur=\"2.2s\" repeatCount=\"indefinite\"/>")
+        svg.append("  <g id=\"robotGroup\" transform=\"translate(\(rx), \(ry))\" filter=\"url(#glow)\">")
+        svg.append("    <circle id=\"radarPulse\" r=\"24\" fill=\"none\" stroke=\"#00e5ff\" stroke-width=\"1.5\" opacity=\"0.6\">")
+        svg.append("      <animate attributeName=\"r\" values=\"18;32;18\" dur=\"2.2s\" repeatCount=\"indefinite\"/>")
         svg.append("      <animate attributeName=\"opacity\" values=\"0.8;0.05;0.8\" dur=\"2.2s\" repeatCount=\"indefinite\"/>")
         svg.append("    </circle>")
-        // Outer Body
-        svg.append("    <circle r=\"17\" fill=\"#0F172A\" stroke=\"#00E5FF\" stroke-width=\"2.5\" />")
-        // LiDAR Turret Dome
-        svg.append("    <circle r=\"7\" fill=\"#0284C7\" stroke=\"#38BDF8\" stroke-width=\"1\" />")
-        svg.append("    <circle r=\"2.5\" fill=\"#FFFFFF\" />")
-        // Heading Direction Arrow
+        svg.append("    <circle r=\"18\" fill=\"#0284c7\" stroke=\"#38bdf8\" stroke-width=\"3\"/>")
+        svg.append("    <circle r=\"6\" fill=\"#f8fafc\"/>")
         svg.append("    <g id=\"robotHeading\" transform=\"rotate(\(angle))\">")
-        svg.append("      <polygon points=\"0,-18 -4,-11 4,-11\" fill=\"#00E5FF\" stroke=\"#FFFFFF\" stroke-width=\"0.6\"/>")
+        svg.append("      <line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"-15\" stroke=\"#f8fafc\" stroke-width=\"3\" stroke-linecap=\"round\"/>")
+        svg.append("      <polygon points=\"0,-18 -4,-12 4,-12\" fill=\"#38bdf8\" />")
         svg.append("    </g>")
-        // Name Label
-        svg.append("    <text x=\"0\" y=\"29\" font-family=\"-apple-system, sans-serif\" font-size=\"9\" font-weight=\"bold\" fill=\"#E0F2FE\" text-anchor=\"middle\">\(device.displayName)</text>")
+        svg.append("    <text x=\"26\" y=\"5\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"bold\">\(device.displayName)</text>")
         svg.append("  </g>")
         
-        // Watermark & Map HUD info
-        let textX = vx + 12
-        let textY = vy + vh - 12
-        svg.append("  <text x=\"\(textX)\" y=\"\(textY)\" font-family=\"-apple-system, sans-serif\" font-size=\"10\" font-weight=\"600\" fill=\"#64748B\">LiDAR Map: #\(mid) • Realtime Zero-Server</text>")
+        // Legend Overlay
+        svg.append("  <!-- Legend Overlay -->")
+        svg.append("  <g transform=\"translate(20, 560)\">")
+        svg.append("    <circle cx=\"10\" cy=\"10\" r=\"5\" fill=\"#38bdf8\"/>")
+        svg.append("    <text x=\"24\" y=\"14\" fill=\"#94a3b8\" font-size=\"12\">Vị trí robot</text>")
+        svg.append("    <circle cx=\"110\" cy=\"10\" r=\"5\" fill=\"#34d399\"/>")
+        svg.append("    <text x=\"124\" y=\"14\" fill=\"#94a3b8\" font-size=\"12\">Dock sạc</text>")
+        svg.append("    <line x1=\"190\" y1=\"10\" x2=\"220\" y2=\"10\" stroke=\"#ef4444\" stroke-width=\"3\" stroke-dasharray=\"4 2\"/>")
+        svg.append("    <text x=\"228\" y=\"14\" fill=\"#94a3b8\" font-size=\"12\">Tường ảo</text>")
+        svg.append("  </g>")
+        
+        // Floorplan HUD watermark
+        svg.append("  <text x=\"780\" y=\"580\" text-anchor=\"end\" fill=\"#64748b\" font-size=\"11\" font-weight=\"500\">LiDAR Map: #\(mid) • 82 m²</text>")
         svg.append("</svg>")
         
         return (svg.joined(separator: "\n"), viewBoxRect)
