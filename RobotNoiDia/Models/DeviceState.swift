@@ -58,6 +58,10 @@ public struct DeviceState: Codable {
         return cleanState == "clean"
     }
     
+    public var isPaused: Bool {
+        return cleanState == "pause"
+    }
+    
     // Thống kê phiên dọn dẹp hiện tại (Live stats)
     public var cleanAreaM2: Double
     public var cleanDurationSec: Int

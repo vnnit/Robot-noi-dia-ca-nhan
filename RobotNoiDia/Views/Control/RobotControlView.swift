@@ -341,9 +341,10 @@ public struct RobotControlView: View {
                 
                 HStack(spacing: 4) {
                     if viewModel.device.isOnline && viewModel.state.cleanState != "offline" {
+                        let isPause = viewModel.state.cleanState == "pause"
                         Image(systemName: viewModel.state.isCharging ? "bolt.fill" : "battery.100")
                             .font(.system(size: 10))
-                            .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.45))
+                            .foregroundColor(isPause ? Color.orange : (viewModel.state.isCharging ? Color(red: 0.0, green: 0.75, blue: 0.45) : Color.blue))
                         Text("\(viewModel.state.batteryPercent)%")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(Color(white: 0.35))
@@ -351,8 +352,8 @@ public struct RobotControlView: View {
                             .font(.system(size: 10))
                             .foregroundColor(Color.gray.opacity(0.5))
                         Text(viewModel.state.cleanStateText)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color(white: 0.35))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(isPause ? Color.orange : Color(white: 0.35))
                     } else {
                         Circle()
                             .fill(Color.gray)
@@ -391,21 +392,40 @@ public struct RobotControlView: View {
             HStack(spacing: 8) {
                 HStack(spacing: 6) {
                     let isDevOnline = viewModel.device.isOnline && viewModel.state.cleanState != "offline"
+                    let isPause = viewModel.state.cleanState == "pause"
                     Circle()
-                        .fill(isDevOnline ? (viewModel.state.isWorking ? Color.blue : Color(red: 0.0, green: 0.75, blue: 0.45)) : Color.gray)
+                        .fill(isDevOnline ? (isPause ? Color.orange : (viewModel.state.isWorking ? Color.blue : Color(red: 0.0, green: 0.75, blue: 0.45))) : Color.gray)
                         .frame(width: 7, height: 7)
                     
                     Text(
                         isDevOnline ?
-                        (viewModel.state.isWorking ? "Robot đang dọn dẹp" : (viewModel.state.isCharging ? "Đang sạc tại trạm" : "Robot đang chờ lệnh")) :
+                        (isPause ? "Robot đang tạm dừng (Chờ lệnh)" : (viewModel.state.isWorking ? "Robot đang dọn dẹp" : (viewModel.state.isCharging ? "Đang sạc tại trạm" : "Robot đang chờ lệnh"))) :
                         "Robot ngoại tuyến (Tắt nguồn hoặc mất Wi-Fi)"
                     )
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(isDevOnline ? Color(white: 0.2) : Color.red.opacity(0.8))
+                        .foregroundColor(isDevOnline ? (isPause ? Color.orange : Color(white: 0.2)) : Color.red.opacity(0.8))
                         .lineLimit(1)
                 }
                 
                 Spacer()
+                
+                if viewModel.state.cleanState == "pause" {
+                    Button(action: {
+                        viewModel.triggerCancelTask()
+                    }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Hủy")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color.red.opacity(0.12))
+                        .cornerRadius(8)
+                    }
+                }
                 
                 Button(action: {
                     Task { await viewModel.fetchCleaningLogs() }
@@ -575,78 +595,58 @@ public struct RobotControlView: View {
             
             // MARK: - 3. Các Nút Thao Tác Chính
             HStack(spacing: 0) {
-                // Nút Bản đồ
-                Button(action: {
-                    HapticManager.shared.light()
-                    Task { await viewModel.refreshMap() }
-                }) {
-                    VStack(spacing: 6) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(red: 0.95, green: 0.96, blue: 0.98))
-                                .frame(width: 50, height: 50)
-                            Image(systemName: "map")
-                                .font(.system(size: 20))
-                                .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
-                        }
-                        Text("Bản đồ")
-                            .font(.system(size: 11))
-                            .foregroundColor(Color.gray)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                
-                // Nút BẮT ĐẦU / TẠM DỪNG Chính Giữa
-                Button(action: {
-                    viewModel.triggerStartClean()
-                }) {
-                    VStack(spacing: 6) {
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color(red: 0.09, green: 0.52, blue: 1.0), Color(red: 0.05, green: 0.38, blue: 0.95)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 66, height: 66)
-                                .shadow(color: Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.35), radius: 10, y: 5)
-                            
-                            Image(systemName: viewModel.state.cleanState == "clean" ? "pause.fill" : "play.fill")
-                                .font(.system(size: 26))
-                                .foregroundColor(.white)
-                        }
-                        
-                        Text(mainCleanButtonTitle)
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                
-                // Nút Dọn rác hoặc Về trạm sạc
-                if viewModel.device.hasAutoEmptyStation && viewModel.state.isCharging {
+                if viewModel.state.cleanState == "pause" {
+                    // KHI ROBOT ĐANG TẠM DỪNG:
+                    // 1. Nút HỦY BỎ NHIỆM VỤ (Bên trái)
                     Button(action: {
-                        HapticManager.shared.medium()
-                        viewModel.triggerStationAction(.emptyDustbin)
+                        viewModel.triggerCancelTask()
                     }) {
                         VStack(spacing: 6) {
                             ZStack {
                                 Circle()
-                                    .fill(Color.purple.opacity(0.15))
+                                    .fill(Color.red.opacity(0.12))
                                     .frame(width: 50, height: 50)
-                                Image(systemName: "trash.fill")
+                                Image(systemName: "stop.fill")
                                     .font(.system(size: 20))
-                                    .foregroundColor(Color.purple)
+                                    .foregroundColor(.red)
                             }
-                            Text(viewModel.state.dustbinEmptying ? "Đang gom..." : "Dọn rác")
+                            Text("Hủy nhiệm vụ")
                                 .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Color.purple)
+                                .foregroundColor(.red)
                         }
                     }
                     .frame(maxWidth: .infinity)
-                } else {
+                    
+                    // 2. Nút TIẾP TỤC (Chính giữa)
+                    Button(action: {
+                        viewModel.triggerStartClean()
+                    }) {
+                        VStack(spacing: 6) {
+                            ZStack {
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color(red: 0.09, green: 0.52, blue: 1.0), Color(red: 0.05, green: 0.38, blue: 0.95)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 66, height: 66)
+                                    .shadow(color: Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.35), radius: 10, y: 5)
+                                
+                                Image(systemName: "play.fill")
+                                    .font(.system(size: 26))
+                                    .foregroundColor(.white)
+                            }
+                            
+                            Text("TIẾP TỤC")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    // 3. Nút VỀ TRẠM SẠC (Bên phải)
                     Button(action: {
                         viewModel.triggerCharge()
                     }) {
@@ -665,6 +665,99 @@ public struct RobotControlView: View {
                         }
                     }
                     .frame(maxWidth: .infinity)
+                } else {
+                    // TRẠNG THÁI BÌNH THƯỜNG / ĐANG DỌN
+                    // Nút Bản đồ
+                    Button(action: {
+                        HapticManager.shared.light()
+                        Task { await viewModel.refreshMap() }
+                    }) {
+                        VStack(spacing: 6) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(red: 0.95, green: 0.96, blue: 0.98))
+                                    .frame(width: 50, height: 50)
+                                Image(systemName: "map")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
+                            }
+                            Text("Bản đồ")
+                                .font(.system(size: 11))
+                                .foregroundColor(Color.gray)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    // Nút BẮT ĐẦU / TẠM DỪNG Chính Giữa
+                    Button(action: {
+                        viewModel.triggerStartClean()
+                    }) {
+                        VStack(spacing: 6) {
+                            ZStack {
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color(red: 0.09, green: 0.52, blue: 1.0), Color(red: 0.05, green: 0.38, blue: 0.95)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 66, height: 66)
+                                    .shadow(color: Color(red: 0.09, green: 0.47, blue: 1.0).opacity(0.35), radius: 10, y: 5)
+                                
+                                Image(systemName: viewModel.state.cleanState == "clean" ? "pause.fill" : "play.fill")
+                                    .font(.system(size: 26))
+                                    .foregroundColor(.white)
+                            }
+                            
+                            Text(mainCleanButtonTitle)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    // Nút Dọn rác hoặc Về trạm sạc
+                    if viewModel.device.hasAutoEmptyStation && viewModel.state.isCharging {
+                        Button(action: {
+                            HapticManager.shared.medium()
+                            viewModel.triggerStationAction(.emptyDustbin)
+                        }) {
+                            VStack(spacing: 6) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.purple.opacity(0.15))
+                                        .frame(width: 50, height: 50)
+                                    Image(systemName: "trash.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(Color.purple)
+                                }
+                                Text(viewModel.state.dustbinEmptying ? "Đang gom..." : "Dọn rác")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(Color.purple)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else {
+                        Button(action: {
+                            viewModel.triggerCharge()
+                        }) {
+                            VStack(spacing: 6) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color(red: 0.95, green: 0.96, blue: 0.98))
+                                        .frame(width: 50, height: 50)
+                                    Image(systemName: "bolt.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.12))
+                                }
+                                Text("Trạm sạc")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color.gray)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
                 }
             }
         }
@@ -672,6 +765,9 @@ public struct RobotControlView: View {
     }
     
     private var mainCleanButtonTitle: String {
+        if viewModel.state.cleanState == "pause" {
+            return "TIẾP TỤC"
+        }
         if viewModel.state.cleanState == "clean" {
             return "TẠM DỪNG"
         }

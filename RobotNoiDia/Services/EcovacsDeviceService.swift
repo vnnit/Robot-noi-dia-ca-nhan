@@ -293,7 +293,7 @@ public final class EcovacsDeviceService {
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "mid", value: device.deviceClass),
             URLQueryItem(name: "did", value: device.did),
-            URLQueryItem(name: "td", value: "q"),
+            URLQueryItem(name: "time", value: "\(Int(Date().timeIntervalSince1970))"),
             URLQueryItem(name: "u", value: creds.userId),
             URLQueryItem(name: "cv", value: "1.67.3"),
             URLQueryItem(name: "t", value: "a"),
@@ -354,11 +354,13 @@ public final class EcovacsDeviceService {
     public func getQuickStatus(device: DeviceModel) async -> (isOnline: Bool, battery: Int?, isCharging: Bool?, cleanState: String?, cleanStateText: String?) {
         async let battRes = try? executeCommand(device: device, cmdName: "getBattery")
         async let cleanRes = try? executeCommand(device: device, cmdName: "getCleanInfo")
+        async let chargeRes = try? executeCommand(device: device, cmdName: "getChargeState")
         
-        let (batt, clean) = await (battRes, cleanRes)
+        let (batt, clean, charge) = await (battRes, cleanRes, chargeRes)
         let hasBattSuccess = (batt?["ret"] as? String)?.lowercased() == "ok"
         let hasCleanSuccess = (clean?["ret"] as? String)?.lowercased() == "ok"
-        let isOnline = hasBattSuccess || hasCleanSuccess
+        let hasChargeSuccess = (charge?["ret"] as? String)?.lowercased() == "ok"
+        let isOnline = hasBattSuccess || hasCleanSuccess || hasChargeSuccess
         
         if !isOnline {
             return (false, nil, false, "offline", "Ngoại tuyến (Offline)")
@@ -372,22 +374,47 @@ public final class EcovacsDeviceService {
         if let b = batt, let body = extractBodyData(b) {
             if let val = body["value"] as? Int { battery = val }
         }
-        if let cl = clean, let body = extractBodyData(cl) {
-            if let st = body["state"] as? String {
-                cleanState = st
-                switch st {
-                case "clean": cleanStateText = "Đang dọn dẹp"
-                case "pause": cleanStateText = "Đang tạm dừng"
-                case "stop": cleanStateText = "Đã dừng dọn"
-                case "go_charging": cleanStateText = "Đang về trạm sạc"
-                case "charging":
-                    cleanStateText = "Đang sạc pin"
-                    isCharging = true
-                default:
-                    cleanStateText = "Nghỉ ngơi / Chờ lệnh"
-                }
+        
+        if let c = charge, let body = extractBodyData(c) {
+            if let ch = body["isCharging"] as? Bool {
+                isCharging = ch
+            } else if let chInt = body["isCharging"] as? Int {
+                isCharging = (chInt == 1)
             }
         }
+        
+        if let cl = clean, let body = extractBodyData(cl) {
+            var motionState: String? = nil
+            if let cs = body["cleanState"] as? [String: Any], let ms = cs["motionState"] as? String {
+                motionState = ms.lowercased()
+            }
+            let rawState = (body["state"] as? String)?.lowercased() ?? ""
+            
+            if motionState == "pause" || rawState == "pause" {
+                cleanState = "pause"
+                cleanStateText = "Đang tạm dừng"
+            } else if rawState == "clean" && (motionState == "clean" || motionState == "working" || motionState == nil) {
+                cleanState = "clean"
+                cleanStateText = "Đang dọn dẹp"
+            } else if rawState == "go_charging" || motionState == "go_charging" {
+                cleanState = "go_charging"
+                cleanStateText = "Đang về trạm sạc"
+            } else if rawState == "charging" || motionState == "charging" || isCharging == true {
+                cleanState = "charging"
+                cleanStateText = "Đang sạc tại trạm"
+                isCharging = true
+            } else if rawState == "stop" || motionState == "stop" {
+                cleanState = "stop"
+                cleanStateText = "Đã dừng dọn"
+            } else {
+                cleanState = isCharging == true ? "charging" : "idle"
+                cleanStateText = isCharging == true ? "Đang sạc tại trạm" : "Nghỉ ngơi / Chờ lệnh"
+            }
+        } else if isCharging == true {
+            cleanState = "charging"
+            cleanStateText = "Đang sạc tại trạm"
+        }
+        
         return (true, battery, isCharging, cleanState, cleanStateText)
     }
     
@@ -397,14 +424,17 @@ public final class EcovacsDeviceService {
         
         async let battRes = try? executeCommand(device: device, cmdName: "getBattery")
         async let cleanRes = try? executeCommand(device: device, cmdName: "getCleanInfo")
+        async let chargeRes = try? executeCommand(device: device, cmdName: "getChargeState")
         
-        let (batt, clean) = await (battRes, cleanRes)
+        let (batt, clean, charge) = await (battRes, cleanRes, chargeRes)
         let hasBattSuccess = (batt?["ret"] as? String)?.lowercased() == "ok"
         let hasCleanSuccess = (clean?["ret"] as? String)?.lowercased() == "ok"
+        let hasChargeSuccess = (charge?["ret"] as? String)?.lowercased() == "ok"
         
-        if !hasBattSuccess && !hasCleanSuccess {
+        if !hasBattSuccess && !hasCleanSuccess && !hasChargeSuccess {
             state.cleanState = "offline"
             state.cleanStateText = "Ngoại tuyến (Offline)"
+            state.isCharging = false
             return state
         }
         
@@ -414,7 +444,20 @@ public final class EcovacsDeviceService {
             if let low = body["isLow"] as? Bool { state.isLowBattery = low }
         }
         
-        // Dọn dẹp & Sạc
+        // Trạng thái sạc
+        if let c = charge, let body = extractBodyData(c) {
+            if let ch = body["isCharging"] as? Bool {
+                state.isCharging = ch
+            } else if let chInt = body["isCharging"] as? Int {
+                state.isCharging = (chInt == 1)
+            }
+            if let m = body["mode"] as? String {
+                state.chargeMode = m
+            }
+            state.chargeText = state.isCharging ? "Đang sạc tại trạm" : "Đang sử dụng pin"
+        }
+        
+        // Dọn dẹp
         if let cl = clean, let body = extractBodyData(cl) {
             if let a = (body["area"] as? NSNumber)?.doubleValue { state.cleanAreaM2 = a }
             else if let a = body["area"] as? Double { state.cleanAreaM2 = a }
@@ -423,45 +466,53 @@ public final class EcovacsDeviceService {
             if let t = (body["time"] as? NSNumber)?.intValue { state.cleanDurationSec = t }
             else if let t = body["time"] as? Int { state.cleanDurationSec = t }
             
-            if let st = body["state"] as? String {
-                state.cleanState = st
-                switch st {
-                case "clean": state.cleanStateText = "Đang dọn dẹp"
-                case "pause": state.cleanStateText = "Đang tạm dừng"
-                case "stop": state.cleanStateText = "Đã dừng dọn"
-                case "go_charging": state.cleanStateText = "Đang về trạm sạc"
-                case "charging":
-                    state.cleanStateText = "Đang sạc pin"
-                    state.isCharging = true
-                case "error": state.cleanStateText = "Báo lỗi"
-                default:
-                    state.cleanStateText = state.isCharging ? "Đang sạc pin tại trạm" : "Nghỉ ngơi / Chờ lệnh"
-                }
+            var motionState: String? = nil
+            if let cs = body["cleanState"] as? [String: Any], let ms = cs["motionState"] as? String {
+                motionState = ms.lowercased()
+            }
+            let rawState = (body["state"] as? String)?.lowercased() ?? ""
+            
+            if motionState == "pause" || rawState == "pause" {
+                state.cleanState = "pause"
+                state.cleanStateText = "Đang tạm dừng"
+            } else if rawState == "clean" && (motionState == "clean" || motionState == "working" || motionState == nil) {
+                state.cleanState = "clean"
+                state.cleanStateText = "Đang dọn dẹp"
+            } else if rawState == "go_charging" || motionState == "go_charging" {
+                state.cleanState = "go_charging"
+                state.cleanStateText = "Đang về trạm sạc"
+            } else if rawState == "charging" || motionState == "charging" || state.isCharging {
+                state.cleanState = "charging"
+                state.cleanStateText = "Đang sạc pin tại trạm"
+                state.isCharging = true
+            } else if rawState == "stop" || motionState == "stop" {
+                state.cleanState = "stop"
+                state.cleanStateText = "Đã dừng dọn"
+            } else {
+                state.cleanState = state.isCharging ? "charging" : "idle"
+                state.cleanStateText = state.isCharging ? "Đang sạc tại trạm" : "Nghỉ ngơi / Chờ lệnh"
             }
             if let tr = body["trigger"] as? String { state.cleanTrigger = tr }
+        } else if state.isCharging {
+            state.cleanState = "charging"
+            state.cleanStateText = "Đang sạc tại trạm"
         }
         
         // Chỉ lấy thêm thông số chuyên sâu khi full == true (tránh dồn dập 6 request gây nghẽn gateway)
         if full {
-            async let chargeRes = try? executeCommand(device: device, cmdName: "getChargeState")
             async let speedRes = try? executeCommand(device: device, cmdName: "getSpeed")
             async let waterRes = try? executeCommand(device: device, cmdName: "getWaterInfo")
             async let errRes = try? executeCommand(device: device, cmdName: "getError")
             
-            let extra = await (chargeRes, speedRes, waterRes, errRes)
+            let extra = await (speedRes, waterRes, errRes)
             
-            if let c = extra.0, let body = extractBodyData(c) {
-                if let ch = body["isCharging"] as? Bool { state.isCharging = ch }
-                if let m = body["mode"] as? String { state.chargeMode = m }
-                state.chargeText = state.isCharging ? "Đang sạc pin tại trạm" : "Đang sử dụng pin"
-            }
-            if let sp = extra.1, let body = extractBodyData(sp) {
+            if let sp = extra.0, let body = extractBodyData(sp) {
                 if let s = body["speed"] as? String { state.fanSpeed = s }
             }
-            if let wt = extra.2, let body = extractBodyData(wt) {
+            if let wt = extra.1, let body = extractBodyData(wt) {
                 if let a = body["amount"] as? Int { state.waterAmount = a }
             }
-            if let er = extra.3, let body = extractBodyData(er) {
+            if let er = extra.2, let body = extractBodyData(er) {
                 if let code = body["code"] as? Int {
                     state.errorCode = code
                     state.errorText = Constants.errorDescriptions[code] ?? "Mã lỗi #\(code)"

@@ -114,6 +114,21 @@ public final class RobotControlViewModel: ObservableObject {
         self.mapId = instantMap.mid
         self.mapCoverageM2 = instantMap.coverageM2
         
+        // Khởi tạo ngay trạng thái từ thông tin thiết bị đã tải trước đó (tránh hiển thị 100% pin giả định)
+        if let b = device.battery {
+            self.state.batteryPercent = b
+        }
+        if let ch = device.isCharging {
+            self.state.isCharging = ch
+            self.state.chargeText = ch ? "Đang sạc pin tại trạm" : "Đang sử dụng pin"
+        }
+        if let cs = device.cleanState {
+            self.state.cleanState = cs
+        }
+        if let cst = device.cleanStateText {
+            self.state.cleanStateText = cst
+        }
+        
         // Nạp tùy chọn cấu hình trạm sạc
         let stationPrefs = deviceService.getStationPreferences(device: device)
         self.state.stationWashFrequency = stationPrefs.washFreq
@@ -192,23 +207,37 @@ public final class RobotControlViewModel: ObservableObject {
         } else if topic.contains("onCleanInfo") || topic.contains("getCleanInfo") {
             if let a = (data["area"] as? NSNumber)?.doubleValue { self.state.cleanAreaM2 = a }
             if let t = (data["time"] as? NSNumber)?.intValue { self.state.cleanDurationSec = t }
-            if let st = data["state"] as? String {
-                self.state.cleanState = st
-                switch st {
-                case "clean": self.state.cleanStateText = "Đang dọn dẹp"
-                case "pause": self.state.cleanStateText = "Đang tạm dừng"
-                case "stop":
-                    self.state.cleanStateText = "Đã dừng dọn"
-                    Task { await self.fetchCleaningLogs() }
-                case "go_charging": self.state.cleanStateText = "Đang về trạm sạc"
-                case "charging":
-                    self.state.cleanStateText = "Đang sạc pin"
-                    self.state.isCharging = true
-                    Task { await self.fetchCleaningLogs() }
-                case "error": self.state.cleanStateText = "Báo lỗi"
-                default:
-                    self.state.cleanStateText = self.state.isCharging ? "Đang sạc pin tại trạm" : "Nghỉ ngơi / Chờ lệnh"
-                }
+            
+            var motionState: String? = nil
+            if let cs = data["cleanState"] as? [String: Any], let ms = cs["motionState"] as? String {
+                motionState = ms.lowercased()
+            }
+            let rawState = (data["state"] as? String)?.lowercased() ?? ""
+            
+            if motionState == "pause" || rawState == "pause" {
+                self.state.cleanState = "pause"
+                self.state.cleanStateText = "Đang tạm dừng"
+            } else if rawState == "clean" && (motionState == "clean" || motionState == "working" || motionState == nil) {
+                self.state.cleanState = "clean"
+                self.state.cleanStateText = "Đang dọn dẹp"
+            } else if rawState == "go_charging" || motionState == "go_charging" {
+                self.state.cleanState = "go_charging"
+                self.state.cleanStateText = "Đang về trạm sạc"
+            } else if rawState == "charging" || motionState == "charging" || self.state.isCharging {
+                self.state.cleanState = "charging"
+                self.state.cleanStateText = "Đang sạc pin"
+                self.state.isCharging = true
+                Task { await self.fetchCleaningLogs() }
+            } else if rawState == "stop" || motionState == "stop" {
+                self.state.cleanState = "stop"
+                self.state.cleanStateText = "Đã dừng dọn"
+                Task { await self.fetchCleaningLogs() }
+            } else if rawState == "error" {
+                self.state.cleanState = "error"
+                self.state.cleanStateText = "Báo lỗi"
+            } else {
+                self.state.cleanState = self.state.isCharging ? "charging" : "idle"
+                self.state.cleanStateText = self.state.isCharging ? "Đang sạc pin tại trạm" : "Nghỉ ngơi / Chờ lệnh"
             }
             NotificationManager.shared.notifyStateChange(device: self.device, state: self.state)
         } else if topic.contains("onChargeState") || topic.contains("getChargeState") {
@@ -291,13 +320,13 @@ public final class RobotControlViewModel: ObservableObject {
         pollingTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self = self else { break }
-                let isCleaning = self.state.cleanState == "clean"
-                let sleepSeconds: UInt64 = isCleaning ? 3 : 8
+                let isBusy = self.state.cleanState == "clean" || self.state.cleanState == "pause" || self.state.cleanState == "go_charging"
+                let sleepSeconds: UInt64 = isBusy ? 3 : 5
                 try? await Task.sleep(nanoseconds: sleepSeconds * 1_000_000_000)
                 guard !Task.isCancelled else { break }
                 
                 await self.refreshState(full: false)
-                if isCleaning || self.selectedTab == .map {
+                if isBusy || self.selectedTab == .map {
                     await self.refreshLivePositionAndTrajectory()
                     if self.svgMap == nil {
                         await self.refreshMap()
@@ -347,10 +376,32 @@ public final class RobotControlViewModel: ObservableObject {
         showToastNotification("Đã làm mới vệt đường đi")
     }
 
+    // MARK: - Huỷ bỏ nhiệm vụ dọn dẹp khi đang tạm dừng (Thoát trạng thái chờ)
+    public func triggerCancelTask() {
+        HapticManager.shared.medium()
+        isExecutingCommand = true
+        Task {
+            do {
+                try await deviceService.clean(device: device, action: .stop)
+                self.state.cleanState = "stop"
+                self.state.cleanStateText = "Đã dừng dọn"
+                self.showToastNotification("Đã hủy bỏ nhiệm vụ dọn dẹp")
+                await self.refreshState(full: true)
+            } catch {
+                HapticManager.shared.error()
+                self.showToastNotification("Lỗi: \(error.localizedDescription)")
+            }
+            self.isExecutingCommand = false
+        }
+    }
     
     // MARK: - Remote Actions & Mode Clean
     public func triggerStartClean() {
         HapticManager.shared.medium()
+        if state.cleanState == "pause" {
+            triggerClean(action: .resume)
+            return
+        }
         let isCleaning = state.cleanState == "clean"
         if isCleaning {
             triggerClean(action: .pause)
