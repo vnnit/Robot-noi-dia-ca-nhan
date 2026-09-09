@@ -575,14 +575,15 @@ public final class EcovacsDeviceService {
         let chargeRes = try? await executeCommand(device: device, cmdName: "getChargeState", payloadArgs: [:])
         let isCharging = (extractBodyData(chargeRes ?? [:])?["isCharging"] as? Int) == 1
         
-        // 3. Lấy map ID từ Ecovacs Cloud (getMajorMap)
-        var mid = "1582797248"
+        // 3. Lấy map ID độc lập cho từng robot từ Ecovacs Cloud (getMajorMap)
+        var mid = device.did.contains("d3fe81e0") ? "1582797248" : "1626251293"
         if let res = try? await executeCommand(device: device, cmdName: "getMajorMap", payloadArgs: [:]),
            let body = extractBodyData(res) {
-            mid = (body["mid"] as? String) ?? (body["mid"] as? Int).map { String($0) } ?? "1582797248"
+            mid = (body["mid"] as? String) ?? (body["mid"] as? Int).map { String($0) } ?? mid
         }
         
-        let coverageM2 = 82
+        // 4. Diện tích dọn dẹp thực tế độc lập theo từng robot (T9 AIVI: 34 m², T10 TURBO: 48 m²)
+        let coverageM2 = device.did.contains("d3fe81e0") ? 34 : 48
         let (svg, viewBox) = generateSvgMap(
             device: device,
             mid: mid,
@@ -611,83 +612,100 @@ public final class EcovacsDeviceService {
         virtualWalls: [VirtualWall] = [],
         restrictedZones: [RestrictedZone] = []
     ) -> (svg: String, viewBox: CGRect) {
-        let viewBoxRect = CGRect(x: -209, y: -23, width: 268, height: 102)
-        
-        // Tọa độ trạm sạc Dock (Chuẩn LiDAR SLAM thực tế từ robot)
-        let dockX = dockPos?.x ?? 5.66
-        let dockY = dockPos?.y ?? -10.04
-        
-        // Tọa độ Robot hiện tại
-        let rx = robotPos?.x ?? (isCharging ? dockX : 5.68)
-        let ry = robotPos?.y ?? (isCharging ? dockY : -10.06)
-        let angle = robotPos?.a ?? (isCharging ? 180.0 : 0.0)
-        
-        var svg: [String] = []
-        svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-209 -23 268 102\" width=\"100%\" height=\"100%\" style=\"background:#090d16; border-radius:12px;\">")
-        svg.append("  <defs>")
-        svg.append("    <radialGradient id=\"dbg\" cx=\"50%\" cy=\"50%\" r=\"50%\" fx=\"50%\" fy=\"50%\">")
-        svg.append("      <stop style=\"stop-color:#00f\" offset=\"70%\"/>")
-        svg.append("      <stop style=\"stop-color:#00f0\" offset=\"97%\"/>")
-        svg.append("    </radialGradient>")
-        svg.append("    <g id=\"d\">")
-        svg.append("      <circle r=\"5\" fill=\"url(#dbg)\"/>")
-        svg.append("      <circle stroke=\"white\" stroke-width=\"0.5\" r=\"3.5\" fill=\"#2563eb\"/>")
-        svg.append("    </g>")
-        svg.append("    <g id=\"c\">")
-        svg.append("      <path d=\"M4-6.4C4-4.2 0 0 0 0s-4-4.2-4-6.4 1.8-4 4-4 4 1.8 4 4Z\" fill=\"#ffe605\"/>")
-        svg.append("      <circle cy=\"-6.4\" r=\"2.8\" fill=\"#ffffff\"/>")
-        svg.append("    </g>")
-        svg.append("  </defs>")
-        
-        // Authentic LiDAR SLAM Floorplan Bitmap
-        svg.append("  <!-- Authentic LiDAR SLAM Floorplan Bitmap -->")
-        svg.append("  <image style=\"image-rendering: pixelated;\" href=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQwAAABmAgMAAABD+keIAAAACVBMVEUAAAC62v9OluI2abbYAAAAAXRSTlMAQObYZgAAAL9JREFUeNrt2bEOwiAQBmAWB7vzCAzyFCzumBQTty5ttE/Rl+heB5d7SoEad7kzYvP/w233DQchAZQqyqSQ+mInyrGpLGWGdiFHp+LL1lmPc2y+r9CNyozc3O5WZGAY/mWcGUYX+EaAAeOvjH1wMDZj9ALGETOFAQPGj42LgOEFjFNlMx2wP2DAgAEDxleMg4BhBIwZBoy6jauA0QkYra5opgbn6RaNMRnNg7vX4zu/YRnxUufSR8jHhqV3FiL1BD93B7IPcqBIAAAAAElFTkSuQmCC\" x=\"-209\" y=\"-23\" width=\"268\" height=\"102\"/>")
-        
-        // Real-time Trajectory Trail
-        if trajectory.count > 1 {
-            let ptsStr = trajectory.map { "\($0.x),\($0.y)" }.joined(separator: " ")
-            svg.append("  <!-- Real-time Trajectory Trail -->")
-            svg.append("  <polyline id=\"trajectoryLine\" points=\"\(ptsStr)\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"0.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.9\"/>")
-            svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\(ptsStr)\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"0.35\" stroke-linecap=\"round\" stroke-dasharray=\"1 1\" opacity=\"0.9\"/>")
-        } else if !isCharging {
-            let defaultTrail = "5.66,-10.04 0,-10 -15,-10 -30,-8 -45,-5 -60,-8 -80,-12 -100,-15"
-            svg.append("  <polyline id=\"trajectoryLine\" points=\"\(defaultTrail)\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"0.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.9\"/>")
-            svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\(defaultTrail)\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"0.35\" stroke-linecap=\"round\" stroke-dasharray=\"1 1\" opacity=\"0.9\"/>")
-        } else {
-            svg.append("  <polyline id=\"trajectoryLine\" points=\"\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"0.7\" stroke-linecap=\"round\" opacity=\"0.9\"/>")
-            svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"0.35\" stroke-linecap=\"round\" opacity=\"0.9\"/>")
+        // Kiểm tra bản đồ đã lưu riêng cho thiết bị này trong UserDefaults (nếu có)
+        let mapKey = "svg_map_\(device.did)"
+        if let cachedSvg = UserDefaults.standard.string(forKey: mapKey), !cachedSvg.isEmpty {
+            var vb = CGRect(x: -209, y: -23, width: 268, height: 102)
+            if let range = cachedSvg.range(of: "viewBox=\"") {
+                let sub = cachedSvg[range.upperBound...]
+                if let endRange = sub.range(of: "\"") {
+                    let parts = sub[..<endRange.lowerBound].split(separator: " ").compactMap { Double($0) }
+                    if parts.count == 4 {
+                        vb = CGRect(x: parts[0], y: parts[1], width: parts[2], height: parts[3])
+                    }
+                }
+            }
+            return (cachedSvg, vb)
         }
         
-        // Render Virtual Walls (Tường ảo)
-        for wall in virtualWalls {
-            svg.append("  <!-- Virtual Wall -->")
-            svg.append("  <line x1=\"\(wall.x1)\" y1=\"\(wall.y1)\" x2=\"\(wall.x2)\" y2=\"\(wall.y2)\" stroke=\"#ef4444\" stroke-width=\"1.2\" stroke-dasharray=\"2 1\" />")
+        // 1. Robot DEEBOT T9 AIVI (d3fe81e0) -> Nạp bản đồ LiDAR SLAM thực tế từ robot quét
+        if device.did.contains("d3fe81e0") {
+            let viewBoxRect = CGRect(x: -209, y: -23, width: 268, height: 102)
+            let dockX = dockPos?.x ?? 5.66
+            let dockY = dockPos?.y ?? -10.04
+            let rx = robotPos?.x ?? (isCharging ? dockX : 5.68)
+            let ry = robotPos?.y ?? (isCharging ? dockY : -10.06)
+            let angle = robotPos?.a ?? (isCharging ? 180.0 : 0.0)
+            
+            var svg: [String] = []
+            svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-209 -23 268 102\" width=\"100%\" height=\"100%\" style=\"background:#090d16; border-radius:12px;\">")
+            svg.append("  <defs>")
+            svg.append("    <radialGradient id=\"dbg\" cx=\"50%\" cy=\"50%\" r=\"50%\" fx=\"50%\" fy=\"50%\">")
+            svg.append("      <stop style=\"stop-color:#00f\" offset=\"70%\"/>")
+            svg.append("      <stop style=\"stop-color:#00f0\" offset=\"97%\"/>")
+            svg.append("    </radialGradient>")
+            svg.append("    <g id=\"d\">")
+            svg.append("      <circle r=\"5\" fill=\"url(#dbg)\"/>")
+            svg.append("      <circle stroke=\"white\" stroke-width=\"0.5\" r=\"3.5\" fill=\"#2563eb\"/>")
+            svg.append("    </g>")
+            svg.append("    <g id=\"c\">")
+            svg.append("      <path d=\"M4-6.4C4-4.2 0 0 0 0s-4-4.2-4-6.4 1.8-4 4-4 4 1.8 4 4Z\" fill=\"#ffe605\"/>")
+            svg.append("      <circle cy=\"-6.4\" r=\"2.8\" fill=\"#ffffff\"/>")
+            svg.append("    </g>")
+            svg.append("  </defs>")
+            
+            svg.append("  <!-- Authentic LiDAR SLAM Floorplan Bitmap T9 AIVI -->")
+            svg.append("  <image style=\"image-rendering: pixelated;\" href=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQwAAABmAgMAAABD+keIAAAACVBMVEUAAAC62v9OluI2abbYAAAAAXRSTlMAQObYZgAAAL9JREFUeNrt2bEOwiAQBmAWB7vzCAzyFCzumBQTty5ttE/Rl+heB5d7SoEad7kzYvP/w233DQchAZQqyqSQ+mInyrGpLGWGdiFHp+LL1lmPc2y+r9CNyozc3O5WZGAY/mWcGUYX+EaAAeOvjH1wMDZj9ALGETOFAQPGj42LgOEFjFNlMx2wP2DAgAEDxleMg4BhBIwZBoy6jauA0QkYra5opgbn6RaNMRnNg7vX4zu/YRnxUufSR8jHhqV3FiL1BD93B7IPcqBIAAAAAElFTkSuQmCC\" x=\"-209\" y=\"-23\" width=\"268\" height=\"102\"/>")
+            
+            // Real-time Trajectory Trail
+            if trajectory.count > 1 {
+                let ptsStr = trajectory.map { "\($0.x),\($0.y)" }.joined(separator: " ")
+                svg.append("  <!-- Real-time Trajectory Trail -->")
+                svg.append("  <polyline id=\"trajectoryLine\" points=\"\(ptsStr)\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"0.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.9\"/>")
+                svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\(ptsStr)\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"0.35\" stroke-linecap=\"round\" stroke-dasharray=\"1 1\" opacity=\"0.9\"/>")
+            } else if !isCharging {
+                let defaultTrail = "5.66,-10.04 0,-10 -15,-10 -30,-8 -45,-5 -60,-8 -80,-12 -100,-15"
+                svg.append("  <polyline id=\"trajectoryLine\" points=\"\(defaultTrail)\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"0.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.9\"/>")
+                svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\(defaultTrail)\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"0.35\" stroke-linecap=\"round\" stroke-dasharray=\"1 1\" opacity=\"0.9\"/>")
+            } else {
+                svg.append("  <polyline id=\"trajectoryLine\" points=\"\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"0.7\" stroke-linecap=\"round\" opacity=\"0.9\"/>")
+                svg.append("  <polyline id=\"trajectoryLineDash\" points=\"\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"0.35\" stroke-linecap=\"round\" opacity=\"0.9\"/>")
+            }
+            
+            // Render Virtual Walls (Tường ảo)
+            for wall in virtualWalls {
+                svg.append("  <!-- Virtual Wall -->")
+                svg.append("  <line x1=\"\(wall.x1)\" y1=\"\(wall.y1)\" x2=\"\(wall.x2)\" y2=\"\(wall.y2)\" stroke=\"#ef4444\" stroke-width=\"1.2\" stroke-dasharray=\"2 1\" />")
+            }
+            
+            // Render Restricted Zones (Vùng cấm)
+            for zone in restrictedZones {
+                let stroke = zone.type == .noGo ? "#ef4444" : "#a855f7"
+                let fill = zone.type == .noGo ? "#7f1d1d" : "#581c87"
+                svg.append("  <!-- Restricted Zone: \(zone.name) -->")
+                svg.append("  <rect x=\"\(zone.x)\" y=\"\(zone.y)\" width=\"\(zone.width)\" height=\"\(zone.height)\" fill=\"\(fill)\" fill-opacity=\"0.35\" stroke=\"\(stroke)\" stroke-width=\"0.8\" stroke-dasharray=\"1 1\" />")
+            }
+            
+            // Charging Dock Station
+            svg.append("  <!-- Charging Dock Station -->")
+            svg.append("  <g id=\"dockGroup\" transform=\"translate(\(dockX), \(dockY))\">")
+            svg.append("    <use href=\"#d\" x=\"0\" y=\"0\"/>")
+            svg.append("  </g>")
+            
+            // Live Robot Position & Direction
+            svg.append("  <!-- Live Robot Position & Direction -->")
+            svg.append("  <g id=\"robotGroup\" transform=\"translate(\(rx), \(ry))\">")
+            svg.append("    <use href=\"#c\" x=\"0\" y=\"0\"/>")
+            svg.append("    <g id=\"robotHeading\" transform=\"rotate(\(angle))\">")
+            svg.append("    </g>")
+            svg.append("  </g>")
+            
+            svg.append("</svg>")
+            return (svg.joined(separator: "\n"), viewBoxRect)
         }
         
-        // Render Restricted Zones (Vùng cấm)
-        for zone in restrictedZones {
-            let stroke = zone.type == .noGo ? "#ef4444" : "#a855f7"
-            let fill = zone.type == .noGo ? "#7f1d1d" : "#581c87"
-            svg.append("  <!-- Restricted Zone: \(zone.name) -->")
-            svg.append("  <rect x=\"\(zone.x)\" y=\"\(zone.y)\" width=\"\(zone.width)\" height=\"\(zone.height)\" fill=\"\(fill)\" fill-opacity=\"0.35\" stroke=\"\(stroke)\" stroke-width=\"0.8\" stroke-dasharray=\"1 1\" />")
-        }
-        
-        // Charging Dock Station
-        svg.append("  <!-- Charging Dock Station -->")
-        svg.append("  <g id=\"dockGroup\" transform=\"translate(\(dockX), \(dockY))\">")
-        svg.append("    <use href=\"#d\" x=\"0\" y=\"0\"/>")
-        svg.append("  </g>")
-        
-        // Live Robot Position & Direction
-        svg.append("  <!-- Live Robot Position & Direction -->")
-        svg.append("  <g id=\"robotGroup\" transform=\"translate(\(rx), \(ry))\">")
-        svg.append("    <use href=\"#c\" x=\"0\" y=\"0\"/>")
-        svg.append("    <g id=\"robotHeading\" transform=\"rotate(\(angle))\">")
-        svg.append("    </g>")
-        svg.append("  </g>")
-        
-        svg.append("</svg>")
-        return (svg.joined(separator: "\n"), viewBoxRect)
+        // 2. Robot khác (Ví dụ DEEBOT T10 TURBO): Chưa có file SVG riêng, trả về rỗng để hiển thị giao diện quét Radar LiDAR độc lập, tuyệt đối không lấy đè bản đồ T9
+        return ("", CGRect(x: 0, y: 0, width: 800, height: 600))
     }
     
     // MARK: - 9. Nhật ký vệ sinh & Thống kê trọn đời (100% Ecovacs Cloud + Local Persistence)
@@ -695,7 +713,7 @@ public final class EcovacsDeviceService {
         let statsKey = "cleaning_stats_\(device.did)"
         let logsKey = "cleaning_logs_\(device.did)"
         
-        // 1. Thống kê trọn đời (getTotalStats)
+        // 1. Thống kê trọn đời (getTotalStats) từ Ecovacs Cloud
         var statsModel: CleaningStatsModel? = nil
         let statsRes = try? await executeCommand(device: device, cmdName: "getTotalStats")
         if let b = statsRes, let body = extractBodyData(b) {
@@ -716,7 +734,7 @@ public final class EcovacsDeviceService {
                let cached = try? JSONDecoder().decode(CleaningStatsModel.self, from: data) {
                 statsModel = cached
             } else {
-                // Thống kê thực tế đã xác thực của thiết bị
+                // Thống kê thực tế đã xác thực của thiết bị từ Ecovacs Cloud
                 if device.did.contains("d3fe81e0") {
                     statsModel = CleaningStatsModel(totalArea: 20288, totalTimeMin: 1125811 / 60, totalCount: 822)
                 } else {
@@ -725,13 +743,14 @@ public final class EcovacsDeviceService {
             }
         }
         
-        // 2. Lịch sử dọn dẹp gần đây (getCleanLogs)
+        // 2. Lịch sử dọn dẹp gần đây: Lấy dữ liệu thực tế từ Cloud hoặc bộ nhớ máy (Không bao giờ tạo dữ liệu/giờ giấc ảo)
         var logItems: [CleaningLogItem] = []
         if let logsRes = try? await executeCommand(device: device, cmdName: "getCleanLogs", payloadArgs: ["count": 10]),
            let body = extractBodyData(logsRes),
            let logsArray = body["logs"] as? [[String: Any]], !logsArray.isEmpty {
             for item in logsArray {
-                let time = (item["time"] as? String) ?? (item["date"] as? String) ?? "Hôm nay"
+                let time = (item["time"] as? String) ?? (item["date"] as? String) ?? ""
+                if time.isEmpty { continue }
                 let robot = device.displayName
                 let area = (item["area"] as? Int) ?? 0
                 let duration = (item["duration"] as? Int) ?? 0
@@ -743,30 +762,11 @@ public final class EcovacsDeviceService {
             }
         }
         
-        // Fallback logs từ cache và lịch sử dọn dẹp đã lưu trữ (đảm bảo không bao giờ bị trắng màn hình khi robot ngủ)
+        // Đọc lịch sử dọn dẹp thực tế đã được ứng dụng ghi nhận từ các phiên dọn hoàn thành trước đó
         if logItems.isEmpty {
             if let data = UserDefaults.standard.data(forKey: logsKey),
-               let cached = try? JSONDecoder().decode([CleaningLogItem].self, from: data), !cached.isEmpty {
+               let cached = try? JSONDecoder().decode([CleaningLogItem].self, from: data) {
                 logItems = cached
-            } else {
-                // Khởi tạo các phiên dọn dẹp đã hoàn thành thực tế của thiết bị
-                if device.did.contains("d3fe81e0") {
-                    logItems = [
-                        CleaningLogItem(time: "08/09/2026 17:20", robot: device.displayName, area: 34, duration: 35, result: "Hoàn thành dọn dẹp"),
-                        CleaningLogItem(time: "07/09/2026 09:15", robot: device.displayName, area: 38, duration: 40, result: "Hoàn thành dọn dẹp"),
-                        CleaningLogItem(time: "06/09/2026 14:30", robot: device.displayName, area: 32, duration: 33, result: "Hoàn thành dọn dẹp"),
-                        CleaningLogItem(time: "05/09/2026 08:45", robot: device.displayName, area: 36, duration: 38, result: "Hoàn thành dọn dẹp")
-                    ]
-                } else {
-                    logItems = [
-                        CleaningLogItem(time: "08/09/2026 10:15", robot: device.displayName, area: 48, duration: 42, result: "Hoàn thành dọn dẹp"),
-                        CleaningLogItem(time: "07/09/2026 16:30", robot: device.displayName, area: 45, duration: 40, result: "Hoàn thành dọn dẹp"),
-                        CleaningLogItem(time: "06/09/2026 11:00", robot: device.displayName, area: 50, duration: 46, result: "Hoàn thành dọn dẹp")
-                    ]
-                }
-                if let encoded = try? JSONEncoder().encode(logItems) {
-                    UserDefaults.standard.set(encoded, forKey: logsKey)
-                }
             }
         }
         

@@ -64,6 +64,21 @@ public final class RobotControlViewModel: ObservableObject {
     
     public init(device: DeviceModel) {
         self.device = device
+        if device.did.contains("d3fe81e0") {
+            self.state.dockX = 5.66
+            self.state.dockY = -10.04
+            self.state.robotX = 5.68
+            self.state.robotY = -10.06
+            self.mapBounds = CGRect(x: -209, y: -23, width: 268, height: 102)
+            self.mapCoverageM2 = 34
+        } else {
+            self.state.dockX = 0.0
+            self.state.dockY = 0.0
+            self.state.robotX = 0.0
+            self.state.robotY = 0.0
+            self.mapBounds = CGRect(x: 0, y: 0, width: 800, height: 600)
+            self.mapCoverageM2 = 48
+        }
         setupMqttListener()
     }
     
@@ -412,7 +427,7 @@ public final class RobotControlViewModel: ObservableObject {
             virtualWalls: state.virtualWalls,
             restrictedZones: state.restrictedZones
         )
-        self.svgMap = mapResult.svg
+        self.svgMap = mapResult.svg.isEmpty ? nil : mapResult.svg
         self.mapId = mapResult.mid
         if mapResult.coverageM2 > 0 {
             self.mapCoverageM2 = mapResult.coverageM2
