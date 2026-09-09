@@ -32,6 +32,16 @@ public enum FanSpeedLevel: String, CaseIterable {
     }
 }
 
+public struct MapPoint: Codable, Hashable {
+    public let x: Double
+    public let y: Double
+    
+    public init(x: Double, y: Double) {
+        self.x = x
+        self.y = y
+    }
+}
+
 public struct DeviceState: Codable {
     public var batteryPercent: Int
     public var isLowBattery: Bool
@@ -47,6 +57,18 @@ public struct DeviceState: Codable {
     public var isWorking: Bool {
         return cleanState == "clean"
     }
+    
+    // Thống kê phiên dọn dẹp hiện tại (Live stats)
+    public var cleanAreaM2: Double
+    public var cleanDurationSec: Int
+    
+    // Tọa độ định vị LiDAR thời gian thực
+    public var robotX: Double
+    public var robotY: Double
+    public var robotAngle: Double
+    public var dockX: Double
+    public var dockY: Double
+    public var trajectory: [MapPoint]
     
     public var fanSpeed: String
     public var waterAmount: Int // 1..4
@@ -69,6 +91,14 @@ public struct DeviceState: Codable {
             cleanState: "idle",
             cleanStateText: "Nghỉ ngơi / Chờ lệnh",
             cleanTrigger: "none",
+            cleanAreaM2: 0.0,
+            cleanDurationSec: 0,
+            robotX: 0.0,
+            robotY: 0.0,
+            robotAngle: 0.0,
+            dockX: 0.0,
+            dockY: 0.0,
+            trajectory: [],
             fanSpeed: "standard",
             waterAmount: 2,
             volume: 7,
@@ -80,3 +110,4 @@ public struct DeviceState: Codable {
         )
     }
 }
+

@@ -57,7 +57,7 @@ public final class RobotControlViewModel: ObservableObject {
     @Published public var showCleaningLogSheet: Bool = false
     
     private let deviceService = EcovacsDeviceService.shared
-    private var statePollTimer: Timer?
+    private var pollingTask: Task<Void, Never>?
     
     public init(device: DeviceModel) {
         self.device = device
@@ -86,6 +86,8 @@ public final class RobotControlViewModel: ObservableObject {
             if let val = data["value"] as? Int { self.state.batteryPercent = val }
             if let low = data["isLow"] as? Bool { self.state.isLowBattery = low }
         } else if topic.contains("onCleanInfo") || topic.contains("getCleanInfo") {
+            if let a = (data["area"] as? NSNumber)?.doubleValue { self.state.cleanAreaM2 = a }
+            if let t = (data["time"] as? NSNumber)?.intValue { self.state.cleanDurationSec = t }
             if let st = data["state"] as? String {
                 self.state.cleanState = st
                 switch st {
@@ -105,6 +107,13 @@ public final class RobotControlViewModel: ObservableObject {
             if let ch = data["isCharging"] as? Bool { self.state.isCharging = ch }
             if let m = data["mode"] as? String { self.state.chargeMode = m }
             self.state.chargeText = self.state.isCharging ? "Đang sạc pin tại trạm" : "Đang sử dụng pin"
+        } else if topic.contains("onPos") || topic.contains("getPos") {
+            if let dPos = data["deebotPos"] as? [String: Any] {
+                let x = (dPos["x"] as? NSNumber)?.doubleValue ?? 0.0
+                let y = (dPos["y"] as? NSNumber)?.doubleValue ?? 0.0
+                let a = (dPos["a"] as? NSNumber)?.doubleValue ?? 0.0
+                self.recordNewRobotPosition(x: x, y: y, angle: a)
+            }
         } else if topic.contains("onError") || topic.contains("getError") {
             if let code = data["code"] as? Int {
                 self.state.errorCode = code
@@ -140,13 +149,14 @@ public final class RobotControlViewModel: ObservableObject {
     public func refreshAll() {
         Task {
             await refreshState(full: true)
+            await refreshLivePositionAndTrajectory()
             await refreshConsumables()
             await refreshMap()
             await fetchCleaningLogs()
         }
     }
     
-    // MARK: - State Polling (Chạy ngầm dự phòng)
+    // MARK: - State Polling (Chu kỳ thông minh: 2.5s khi dọn, 8s khi nghỉ)
     public func refreshState(full: Bool = false) async {
         let newState = await deviceService.getDeviceState(device: device, full: full, existingState: self.state)
         self.state = newState
@@ -155,18 +165,65 @@ public final class RobotControlViewModel: ObservableObject {
     
     private func startStatePolling() {
         stopStatePolling()
-        // Chu kỳ 6 giây thăm dò nhẹ (chỉ 2 lệnh pin & dọn dẹp) để tránh nghẽn mạng
-        statePollTimer = Timer.scheduledTimer(withTimeInterval: 6.0, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                await self?.refreshState(full: false)
+        pollingTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self = self else { break }
+                let isCleaning = self.state.cleanState == "clean"
+                let sleepSeconds: UInt64 = isCleaning ? 3 : 8
+                try? await Task.sleep(nanoseconds: sleepSeconds * 1_000_000_000)
+                guard !Task.isCancelled else { break }
+                
+                await self.refreshState(full: false)
+                if isCleaning || self.selectedTab == .map {
+                    await self.refreshLivePositionAndTrajectory()
+                }
             }
         }
     }
     
     private func stopStatePolling() {
-        statePollTimer?.invalidate()
-        statePollTimer = nil
+        pollingTask?.cancel()
+        pollingTask = nil
     }
+    
+    // MARK: - Tọa độ & Quỹ đạo thời gian thực (Real-time Live Trajectory)
+    public func refreshLivePositionAndTrajectory() async {
+        let (robotPos, dockPos) = await deviceService.getPosition(device: device)
+        if let dock = dockPos {
+            self.state.dockX = dock.x
+            self.state.dockY = dock.y
+        }
+        if let bot = robotPos {
+            recordNewRobotPosition(x: bot.x, y: bot.y, angle: bot.a)
+        }
+    }
+    
+    private func recordNewRobotPosition(x: Double, y: Double, angle: Double) {
+        self.state.robotX = x
+        self.state.robotY = y
+        self.state.robotAngle = angle
+        
+        let newPoint = MapPoint(x: x, y: y)
+        if let last = self.state.trajectory.last {
+            let dx = newPoint.x - last.x
+            let dy = newPoint.y - last.y
+            let dist = (dx * dx + dy * dy).squareRoot()
+            if dist >= 4.0 {
+                self.state.trajectory.append(newPoint)
+                Task { await updateMapSvg() }
+            }
+        } else {
+            self.state.trajectory.append(newPoint)
+            Task { await updateMapSvg() }
+        }
+    }
+    
+    public func clearTrajectory() {
+        self.state.trajectory.removeAll()
+        Task { await updateMapSvg() }
+        showToastNotification("Đã làm mới vệt đường đi")
+    }
+
     
     // MARK: - Remote Actions
     public func triggerClean(action: CleanAction) {
@@ -334,24 +391,23 @@ public final class RobotControlViewModel: ObservableObject {
         }
     }
     
-    // MARK: - Map
+    // MARK: - Map Realtime (Zero-Server)
+    public func updateMapSvg() async {
+        let res = await deviceService.getSvgMapWithDetails(
+            device: device,
+            currentPos: (state.robotX, state.robotY, state.robotAngle),
+            currentDock: (state.dockX, state.dockY),
+            trajectory: state.trajectory
+        )
+        self.svgMap = res.svg
+        self.mapId = res.mid
+        self.mapCoverageM2 = res.coverageM2
+    }
+    
     public func refreshMap() async {
         isMapLoading = true
-        // 1. Kích hoạt cập nhật bản đồ mới nhất từ robot qua DIY server
-        var mapResult = await deviceService.triggerDiyMapRefresh(device: device)
-        // 2. Nếu không có kết quả mới, lấy từ cache hoặc dự phòng cloud
-        if mapResult == nil {
-            mapResult = await deviceService.getSvgMapWithDetails(device: device)
-        }
-        if let res = mapResult {
-            self.svgMap = res.svg
-            self.mapId = res.mid
-            self.mapCoverageM2 = res.coverageM2
-        } else {
-            self.svgMap = nil
-            self.mapId = nil
-            self.mapCoverageM2 = nil
-        }
+        await refreshLivePositionAndTrajectory()
+        await updateMapSvg()
         self.isMapLoading = false
     }
     
