@@ -533,7 +533,7 @@ public final class RobotControlViewModel: ObservableObject {
     }
     
     // MARK: - Toast
-    private func showToastNotification(_ msg: String) {
+    public func showToastNotification(_ msg: String) {
         self.toastMessage = msg
         self.showToast = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
