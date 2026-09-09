@@ -425,8 +425,8 @@ public final class RobotControlViewModel: ObservableObject {
         if let res = mapResult {
             self.svgMap = res.svg
             self.mapId = res.mid
-            if let cov = res.coverageM2, cov > 0 {
-                self.mapCoverageM2 = cov
+            if res.coverageM2 > 0 {
+                self.mapCoverageM2 = res.coverageM2
             }
             self.mapBounds = res.viewBox
         } else {
