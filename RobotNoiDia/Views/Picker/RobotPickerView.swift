@@ -9,6 +9,9 @@ public struct RobotPickerView: View {
     @State private var showLogoutAlert: Bool = false
     @State private var showRenameAlert: Bool = false
     @State private var renameText: String = ""
+    @State private var showDeleteAlert: Bool = false
+    @State private var robotToDelete: DeviceModel? = nil
+    @State private var isDeleting: Bool = false
     @State private var toastMessage: String? = nil
     @State private var showToast: Bool = false
     
@@ -168,8 +171,8 @@ public struct RobotPickerView: View {
                 } else {
                     // 2. Tên Robot & Trạng thái Trực tuyến
                     HStack(alignment: .center) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 8) {
                                 Text(currentRobot?.displayName ?? "DEEBOT")
                                     .font(.system(size: 22, weight: .bold, design: .rounded))
                                     .foregroundColor(.black)
@@ -182,29 +185,46 @@ public struct RobotPickerView: View {
                                     }
                                 }) {
                                     Image(systemName: "pencil.circle.fill")
-                                        .font(.system(size: 17))
+                                        .font(.system(size: 18))
                                         .foregroundColor(Color(red: 0.09, green: 0.47, blue: 1.0))
+                                }
+                                
+                                Button(action: {
+                                    if let r = currentRobot {
+                                        robotToDelete = r
+                                        showDeleteAlert = true
+                                    }
+                                }) {
+                                    Image(systemName: "trash.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(Color.red.opacity(0.85))
                                 }
                             }
                             
                             HStack(spacing: 6) {
                                 Circle()
-                                    .fill(Color(red: 0.0, green: 0.75, blue: 0.45))
+                                    .fill(currentRobot?.isOnline == true ? Color(red: 0.0, green: 0.75, blue: 0.45) : Color.gray)
                                     .frame(width: 7, height: 7)
-                                Text("Trực tuyến")
+                                Text(currentRobot?.isOnline == true ? "Trực tuyến" : "Ngoại tuyến (Offline)")
                                     .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.45))
+                                    .foregroundColor(currentRobot?.isOnline == true ? Color(red: 0.0, green: 0.75, blue: 0.45) : Color.gray)
                                 
-                                if let b = currentRobot?.battery {
-                                    Text("• Pin: \(b)%")
-                                        .font(.system(size: 12))
+                                if currentRobot?.isOnline == true {
+                                    if let b = currentRobot?.battery {
+                                        Text("• Pin: \(b)%")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.gray)
+                                    }
+                                    
+                                    if let ip = currentRobot?.localIp {
+                                        Text("• LAN: \(ip)")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(Color(red: 0.0, green: 0.65, blue: 0.35))
+                                    }
+                                } else {
+                                    Text("• Tắt nguồn hoặc mất Wi-Fi")
+                                        .font(.system(size: 11))
                                         .foregroundColor(.gray)
-                                }
-                                
-                                if let ip = currentRobot?.localIp {
-                                    Text("• LAN: \(ip)")
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundColor(Color(red: 0.0, green: 0.65, blue: 0.35))
                                 }
                             }
 
@@ -235,6 +255,7 @@ public struct RobotPickerView: View {
                             }) {
                                 VStack(spacing: 0) {
                                     RobotHeroImageView(device: dev)
+                                        .opacity(dev.isOnline ? 1.0 : 0.6)
                                         .padding(.top, 10)
                                 }
                             }
@@ -458,6 +479,32 @@ public struct RobotPickerView: View {
             Button("Hủy", role: .cancel) {}
         } message: {
             Text("Đặt tên gợi nhớ cho robot (VD: Robot Tầng 1, Deebot Phòng Khách).")
+        }
+        .alert("Xóa Robot Khỏi Tài Khoản?", isPresented: $showDeleteAlert) {
+            Button("Xóa Vĩnh Viễn", role: .destructive) {
+                if let target = robotToDelete {
+                    isDeleting = true
+                    Task {
+                        do {
+                            try await viewModel.deleteRobot(device: target)
+                            if selectedIndex >= viewModel.devices.count && !viewModel.devices.isEmpty {
+                                selectedIndex = viewModel.devices.count - 1
+                            }
+                            showToastNotify("Đã xóa robot '\(target.displayName)' khỏi tài khoản.")
+                        } catch {
+                            showToastNotify("Lỗi xóa robot: \(error.localizedDescription)")
+                        }
+                        isDeleting = false
+                    }
+                }
+            }
+            Button("Hủy", role: .cancel) {}
+        } message: {
+            if let target = robotToDelete {
+                Text("Bạn có chắc chắn muốn hủy liên kết robot '\(target.displayName)'? Robot sẽ được xóa khỏi tài khoản Ecovacs của bạn.")
+            } else {
+                Text("Xác nhận xóa robot khỏi tài khoản.")
+            }
         }
         .alert(isPresented: $showLogoutAlert) {
             Alert(

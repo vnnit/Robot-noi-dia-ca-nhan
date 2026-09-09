@@ -227,8 +227,60 @@ public final class EcovacsDeviceService {
         let newCount = afterDids.subtracting(beforeDids).count
         return (total: currentList.count, added: newCount)
     }
-
     
+    // MARK: - Xóa / Hủy liên kết Robot khỏi tài khoản Ecovacs
+    public func deleteDevice(device: DeviceModel) async throws {
+        let creds = try await authService.ensureValidToken()
+        let portalUrl = Constants.portalUrl(for: keychain.country)
+        guard let url = URL(string: portalUrl + "/api/users/user.do") else {
+            throw NSError(domain: "EcovacsDevice", code: -1, userInfo: [NSLocalizedDescriptionKey: "Sai URL kết nối Ecovacs"])
+        }
+        
+        let body: [String: Any] = [
+            "todo": "DeleteOneDevice",
+            "userid": creds.userId,
+            "did": device.did,
+            "class": device.deviceClass,
+            "resource": device.resource.isEmpty ? "atom" : device.resource,
+            "auth": [
+                "with": "users",
+                "userid": creds.userId,
+                "realm": Constants.realm,
+                "token": creds.token,
+                "resource": creds.deviceId
+            ]
+        ]
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, _) = try await session.data(for: request)
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let result = (json["result"] as? String) ?? (json["ret"] as? String) ?? ""
+            if result.lowercased() == "fail" {
+                let errorMsg = (json["error"] as? String) ?? (json["msg"] as? String) ?? "Không thể xóa robot khỏi máy chủ Ecovacs."
+                throw NSError(domain: "EcovacsDevice", code: -2, userInfo: [NSLocalizedDescriptionKey: errorMsg])
+            }
+        }
+        
+        // Xóa khỏi danh sách cache trên máy
+        removeCachedDevice(did: device.did)
+    }
+    
+    public func removeCachedDevice(did: String) {
+        var cached = getCachedDevices()
+        cached.removeAll(where: { $0.did == did })
+        saveCachedDevices(cached)
+        
+        var custom = getCustomDevices()
+        custom.removeAll(where: { $0.did == did })
+        if let data = try? JSONEncoder().encode(custom) {
+            UserDefaults.standard.set(data, forKey: customDevicesKey)
+        }
+        UserDefaults.standard.removeObject(forKey: "custom_robot_name_\(did)")
+    }
     // MARK: - 2. Gửi lệnh chung (Direct CloudCtl REST)
     public func executeCommand(
         device: DeviceModel,
@@ -299,11 +351,19 @@ public final class EcovacsDeviceService {
     }
     
     // MARK: - Lấy nhanh pin và trạng thái dọn dẹp cho danh sách (siêu nhanh < 1s)
-    public func getQuickStatus(device: DeviceModel) async -> (battery: Int?, isCharging: Bool?, cleanState: String?, cleanStateText: String?) {
+    public func getQuickStatus(device: DeviceModel) async -> (isOnline: Bool, battery: Int?, isCharging: Bool?, cleanState: String?, cleanStateText: String?) {
         async let battRes = try? executeCommand(device: device, cmdName: "getBattery")
         async let cleanRes = try? executeCommand(device: device, cmdName: "getCleanInfo")
         
         let (batt, clean) = await (battRes, cleanRes)
+        let hasBattSuccess = (batt?["ret"] as? String)?.lowercased() == "ok"
+        let hasCleanSuccess = (clean?["ret"] as? String)?.lowercased() == "ok"
+        let isOnline = hasBattSuccess || hasCleanSuccess
+        
+        if !isOnline {
+            return (false, nil, false, "offline", "Ngoại tuyến (Offline)")
+        }
+        
         var battery: Int? = nil
         var isCharging: Bool? = nil
         var cleanState: String? = nil
@@ -328,7 +388,7 @@ public final class EcovacsDeviceService {
                 }
             }
         }
-        return (battery, isCharging, cleanState, cleanStateText)
+        return (true, battery, isCharging, cleanState, cleanStateText)
     }
     
     // MARK: - 3. Lấy Trạng thái Thời gian thực (Live State)
@@ -339,6 +399,14 @@ public final class EcovacsDeviceService {
         async let cleanRes = try? executeCommand(device: device, cmdName: "getCleanInfo")
         
         let (batt, clean) = await (battRes, cleanRes)
+        let hasBattSuccess = (batt?["ret"] as? String)?.lowercased() == "ok"
+        let hasCleanSuccess = (clean?["ret"] as? String)?.lowercased() == "ok"
+        
+        if !hasBattSuccess && !hasCleanSuccess {
+            state.cleanState = "offline"
+            state.cleanStateText = "Ngoại tuyến (Offline)"
+            return state
+        }
         
         // Pin
         if let b = batt, let body = extractBodyData(b) {

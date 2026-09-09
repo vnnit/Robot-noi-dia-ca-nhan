@@ -274,7 +274,16 @@ public final class RobotControlViewModel: ObservableObject {
     public func refreshState(full: Bool = false) async {
         let newState = await deviceService.getDeviceState(device: device, full: full, existingState: self.state)
         self.state = newState
+        if newState.cleanState == "offline" {
+            self.device.status = 0
+        } else {
+            self.device.status = 1
+        }
         NotificationManager.shared.notifyStateChange(device: device, state: newState)
+    }
+    
+    public func deleteRobot() async throws {
+        try await deviceService.deleteDevice(device: device)
     }
     
     private func startStatePolling() {

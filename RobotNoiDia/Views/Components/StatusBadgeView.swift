@@ -575,6 +575,25 @@ public struct RobotHeroImageView: View {
                 }
                 .frame(height: 245)
             }
+            
+            if !device.isOnline {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Color.gray)
+                            .frame(width: 6, height: 6)
+                        Text("Ngoại tuyến (Offline)")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color.white)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.65))
+                    .cornerRadius(12)
+                    .padding(.bottom, 22)
+                }
+            }
         }
         .frame(height: 270)
         .onAppear {

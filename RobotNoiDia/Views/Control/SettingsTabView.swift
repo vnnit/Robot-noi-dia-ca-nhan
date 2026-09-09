@@ -3,6 +3,7 @@ import SwiftUI
 /// Màn hình Cài đặt Nâng cao (Hình 5 - Chuẩn Ecovacs Home App)
 public struct SettingsTabView: View {
     @ObservedObject var viewModel: RobotControlViewModel
+    @EnvironmentObject var appState: AppState
     @Environment(\.presentationMode) var presentationMode
     
     @State private var showScheduleSheet: Bool = false
@@ -14,6 +15,8 @@ public struct SettingsTabView: View {
     @State private var showAboutRobotSheet: Bool = false
     @State private var showAboutStationSheet: Bool = false
     @State private var showStationSettingsSheet: Bool = false
+    @State private var showDeleteRobotAlert: Bool = false
+    @State private var isDeletingRobot: Bool = false
     
     public init(viewModel: RobotControlViewModel) {
         self.viewModel = viewModel
@@ -385,6 +388,32 @@ public struct SettingsTabView: View {
                         .cornerRadius(14)
                         .padding(.horizontal, 16)
                         
+                        // Nhóm: Xóa Robot Khỏi Tài Khoản
+                        VStack(spacing: 0) {
+                            Button(action: {
+                                HapticManager.shared.light()
+                                showDeleteRobotAlert = true
+                            }) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "trash.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.red)
+                                    Text("Xóa Robot Khỏi Tài Khoản")
+                                        .font(.system(size: 15, weight: .bold))
+                                        .foregroundColor(.red)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(Color(white: 0.7))
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+                            }
+                        }
+                        .background(Color.white)
+                        .cornerRadius(14)
+                        .padding(.horizontal, 16)
+                        
                         Spacer().frame(height: 100)
                     }
                     .padding(.top, 16)
@@ -469,6 +498,24 @@ public struct SettingsTabView: View {
                 Button("Đóng", role: .cancel) {}
             } message: {
                 Text("Trạm OMNI đa năng:\n- Tự động giặt giẻ lau kép xoay\n- Sấy khô giẻ lau bằng khí nóng 40°C\n- Tự động nạp nước sạch và bơm xả nước bẩn.")
+            }
+            .alert("Xóa Robot Khỏi Tài Khoản?", isPresented: $showDeleteRobotAlert) {
+                Button("Xóa Vĩnh Viễn", role: .destructive) {
+                    isDeletingRobot = true
+                    Task {
+                        do {
+                            try await viewModel.deleteRobot()
+                            presentationMode.wrappedValue.dismiss()
+                            appState.navigateToPicker()
+                        } catch {
+                            viewModel.showToastNotification("Lỗi khi xóa robot: \(error.localizedDescription)")
+                        }
+                        isDeletingRobot = false
+                    }
+                }
+                Button("Hủy", role: .cancel) {}
+            } message: {
+                Text("Hành động này sẽ hủy liên kết robot '\(viewModel.device.displayName)' khỏi tài khoản Ecovacs của bạn. Robot sẽ không còn xuất hiện trong danh sách thiết bị.")
             }
         }
     }

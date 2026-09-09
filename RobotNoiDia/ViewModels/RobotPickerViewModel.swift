@@ -48,20 +48,21 @@ public final class RobotPickerViewModel: ObservableObject {
                 }
                 
                 // Nạp nhanh pin & dọn dẹp chạy ngầm không chặn giao diện
-                await withTaskGroup(of: (Int, Int?, Bool?, String?, String?).self) { group in
+                await withTaskGroup(of: (Int, Bool, Int?, Bool?, String?, String?).self) { group in
                     for (index, dev) in fetched.enumerated() {
                         group.addTask {
                             let qs = await self.deviceService.getQuickStatus(device: dev)
-                            return (index, qs.battery, qs.isCharging, qs.cleanState, qs.cleanStateText)
+                            return (index, qs.isOnline, qs.battery, qs.isCharging, qs.cleanState, qs.cleanStateText)
                         }
                     }
                     
-                    for await (index, batt, ch, st, text) in group {
+                    for await (index, isOnline, batt, ch, st, text) in group {
                         if index < self.devices.count {
-                            if let b = batt { self.devices[index].battery = b }
-                            if let c = ch { self.devices[index].isCharging = c }
-                            if let s = st { self.devices[index].cleanState = s }
-                            if let t = text { self.devices[index].cleanStateText = t }
+                            self.devices[index].status = isOnline ? 1 : 0
+                            self.devices[index].battery = isOnline ? batt : nil
+                            self.devices[index].isCharging = isOnline ? ch : false
+                            self.devices[index].cleanState = isOnline ? st : "offline"
+                            self.devices[index].cleanStateText = isOnline ? text : "Ngoại tuyến"
                         }
                     }
                 }
@@ -69,7 +70,7 @@ public final class RobotPickerViewModel: ObservableObject {
                 // Lưu lại cache gồm cả trạng thái pin
                 self.deviceService.saveCachedDevices(self.devices)
                 
-                // Bắt đầu chu kỳ làm mới thẻ định kỳ 6 giây
+                // Bắt đầu chu kỳ làm mới thẻ định kỳ 5 giây
                 startAutoPolling()
             } catch {
                 self.isLoading = false
@@ -92,23 +93,30 @@ public final class RobotPickerViewModel: ObservableObject {
         }
     }
     
+    public func deleteRobot(device: DeviceModel) async throws {
+        try await deviceService.deleteDevice(device: device)
+        devices.removeAll(where: { $0.did == device.did })
+        deviceService.saveCachedDevices(devices)
+    }
+    
     public func startAutoPolling() {
         stopAutoPolling()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 6.0, repeats: true) { [weak self] _ in
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 for (index, dev) in self.devices.enumerated() {
                     let qs = await self.deviceService.getQuickStatus(device: dev)
                     if index < self.devices.count {
-                        if let b = qs.battery { self.devices[index].battery = b }
-                        if let c = qs.isCharging { self.devices[index].isCharging = c }
-                        if let s = qs.cleanState { self.devices[index].cleanState = s }
-                        if let t = qs.cleanStateText { self.devices[index].cleanStateText = t }
+                        self.devices[index].status = qs.isOnline ? 1 : 0
+                        self.devices[index].battery = qs.isOnline ? qs.battery : nil
+                        self.devices[index].isCharging = qs.isOnline ? (qs.isCharging ?? false) : false
+                        self.devices[index].cleanState = qs.isOnline ? qs.cleanState : "offline"
+                        self.devices[index].cleanStateText = qs.isOnline ? qs.cleanStateText : "Ngoại tuyến"
                         NotificationManager.shared.notifyQuickStatusChange(
-                            device: dev,
-                            battery: qs.battery,
-                            isCharging: qs.isCharging,
-                            cleanState: qs.cleanState
+                            device: self.devices[index],
+                            battery: self.devices[index].battery,
+                            isCharging: self.devices[index].isCharging,
+                            cleanState: self.devices[index].cleanState
                         )
                     }
                 }

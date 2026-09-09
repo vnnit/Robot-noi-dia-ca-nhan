@@ -340,18 +340,27 @@ public struct RobotControlView: View {
                 }
                 
                 HStack(spacing: 4) {
-                    Image(systemName: viewModel.state.isCharging ? "bolt.fill" : "battery.100")
-                        .font(.system(size: 10))
-                        .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.45))
-                    Text("\(viewModel.state.batteryPercent)%")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(white: 0.35))
-                    Text("|")
-                        .font(.system(size: 10))
-                        .foregroundColor(Color.gray.opacity(0.5))
-                    Text(viewModel.state.cleanStateText)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Color(white: 0.35))
+                    if viewModel.device.isOnline && viewModel.state.cleanState != "offline" {
+                        Image(systemName: viewModel.state.isCharging ? "bolt.fill" : "battery.100")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.45))
+                        Text("\(viewModel.state.batteryPercent)%")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(Color(white: 0.35))
+                        Text("|")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color.gray.opacity(0.5))
+                        Text(viewModel.state.cleanStateText)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Color(white: 0.35))
+                    } else {
+                        Circle()
+                            .fill(Color.gray)
+                            .frame(width: 6, height: 6)
+                        Text("Ngoại tuyến (Offline)")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.gray)
+                    }
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
@@ -381,13 +390,18 @@ public struct RobotControlView: View {
             
             HStack(spacing: 8) {
                 HStack(spacing: 6) {
+                    let isDevOnline = viewModel.device.isOnline && viewModel.state.cleanState != "offline"
                     Circle()
-                        .fill(viewModel.state.isWorking ? Color.blue : Color(red: 0.0, green: 0.75, blue: 0.45))
+                        .fill(isDevOnline ? (viewModel.state.isWorking ? Color.blue : Color(red: 0.0, green: 0.75, blue: 0.45)) : Color.gray)
                         .frame(width: 7, height: 7)
                     
-                    Text(viewModel.state.isWorking ? "Robot đang dọn dẹp" : (viewModel.state.isCharging ? "Đang sạc tại trạm" : "Robot đang chờ lệnh"))
+                    Text(
+                        isDevOnline ?
+                        (viewModel.state.isWorking ? "Robot đang dọn dẹp" : (viewModel.state.isCharging ? "Đang sạc tại trạm" : "Robot đang chờ lệnh")) :
+                        "Robot ngoại tuyến (Tắt nguồn hoặc mất Wi-Fi)"
+                    )
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(white: 0.2))
+                        .foregroundColor(isDevOnline ? Color(white: 0.2) : Color.red.opacity(0.8))
                         .lineLimit(1)
                 }
                 
